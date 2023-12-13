@@ -1,0 +1,1 @@
+# bticino_x8000_custom_component
