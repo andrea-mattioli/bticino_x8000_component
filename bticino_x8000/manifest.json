@@ -1,0 +1,15 @@
+{
+    "domain": "bticino_x8000",
+    "name": "Bticino X8000",
+    "documentation": "https://your-documentation-link",
+    "dependencies": [],
+    "codeowners": [],
+    "requirements": [],
+    "iot_class": "local_push",
+    "config_flow": true,
+    "translations": ["en"],
+    "version": "0.1",
+    "custom": {
+      "oauth": true
+    }
+  }

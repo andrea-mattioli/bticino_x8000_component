@@ -1,0 +1,8 @@
+{
+    "config": {
+      "client_id": "Client ID",
+      "client_secret": "Client Secret",
+      "subscription_key": "Subscription Key",
+      "domain": "Domain"
+    }
+  }
