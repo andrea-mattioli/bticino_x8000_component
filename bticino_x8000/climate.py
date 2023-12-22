@@ -143,12 +143,18 @@ class BticinoX8000ClimateEntity(ClimateEntity):
     @property
     def hvac_mode(self) -> HVACMode | None:
         """Return current operation."""
-        print("Calling hvac_mode method.")
         if self._mode is not None and self._function is not None:
-            print("HVAC_MODE:", self._mode.lower(), self._function.lower())
-            if self._mode.lower() == "manual" and self._function.lower() == "heating":
+            if (
+                self._mode.lower() == "manual"
+                or self._mode.lower() == "boost"
+                or self._mode.lower() == "automatic"
+            ) and self._function.lower() == "heating":
                 return HVACMode.HEAT
-            if self._mode.lower() == "manual" and self._function.lower() == "cooling":
+            if (
+                self._mode.lower() == "manual"
+                or self._mode.lower() == "boost"
+                or self._mode.lower() == "automatic"
+            ) and self._function.lower() == "cooling":
                 return HVACMode.COOL
             if self._mode.lower() == "protection" or self._mode.lower() == "off":
                 return HVACMode.OFF
@@ -186,11 +192,6 @@ class BticinoX8000ClimateEntity(ClimateEntity):
             if self._loadState.lower() == "inactive":
                 return HVACAction.OFF
         return None
-
-    @property
-    def state(self):
-        """Return the current load state."""
-        return self._loadState
 
     @property
     def supported_features(self):
