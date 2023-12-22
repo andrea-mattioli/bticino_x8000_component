@@ -68,7 +68,7 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
 
         # Save user input data
-        #   self.data = user_input
+        self.data = user_input
         authorization_url = self.get_authorization_url(user_input)
         message = (
             f"Click the link below to authorize Bticino X8000. After authorization, paste the browser URL here.\n\n"
