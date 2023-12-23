@@ -2,7 +2,7 @@
     "domain": "bticino_x8000",
     "name": "Bticino X8000",
     "integration_type": "entity",
-    "documentation": "https://github.com/andrea-mattioli/bticino_x8000_custom_component/blob/dev/README.md",
+    "documentation": "https://github.com/andrea-mattioli/bticino_x8000_component/blob/main/README.md",
     "dependencies": [],
     "codeowners": ["@andrea-mattioli"],
     "requirements": [],
@@ -10,7 +10,5 @@
     "config_flow": true,
     "translations": ["en"],
     "version": "0.1",
-    "custom": {
-      "oauth": true
-    }
+    "issue_tracker": "https://github.com/andrea-mattioli/bticino_x8000_component/issues"
   }
