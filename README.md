@@ -1,5 +1,4 @@
-# Bticino Home Assistant Integration
-Chronothermostat Bticino X8000 Integration
+# Thermostat Bticino X8000 (NO NETATMO) Home Assistant Integration
 
 [![stable](https://badges.github.io/stability-badges/dist/stable.svg)](https://github.com/badges/stability-badges)
 
