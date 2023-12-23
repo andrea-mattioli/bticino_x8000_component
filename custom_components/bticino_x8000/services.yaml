@@ -61,9 +61,9 @@ set_boost_mode:
       selector:
         select:
           options:
-            - 30
-            - 60
-            - 90
+            - "30"
+            - "60"
+            - "90"
 
 clear_temperature_setting:
   target:
