@@ -31,7 +31,10 @@ Public Url = https://github.com/andrea-mattioli/bticino_x8000_custom_component
 ```
 First Reply Url = https://my.home-assistant.io/
 ```
-![Alt text](https://github.com/andrea-mattioli/bticino_X8000_rest_api/raw/test/screenshots/app2.png?raw=true "App Register")
+![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/b4550e24b0a623c3a5a90627e92d204de1641367/app1.png?raw=true "App Register")
+![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/b4550e24b0a623c3a5a90627e92d204de1641367/app2.png?raw=true "App Register")
+![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/b4550e24b0a623c3a5a90627e92d204de1641367/app3.png?raw=true "App Register")
+![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/b4550e24b0a623c3a5a90627e92d204de1641367/app4.png?raw=true "App Register")
 
 ## 2. CONFIGURATION
 
@@ -42,4 +45,24 @@ client_secret: recived via email
 subscription_key: subscription key
 domain: my home assistant public domain ex: https//pippo.duckdns.com:8123 (specify the port if is not standard 443)
 ```
-## 3. START
+![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/b4550e24b0a623c3a5a90627e92d204de1641367/config_entry.png?raw=true "Configuration")
+
+Copy or directly open the proposal link
+
+![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/b4550e24b0a623c3a5a90627e92d204de1641367/copy_link.png?raw=true "Configuration")
+
+Accept the scope
+
+![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/b4550e24b0a623c3a5a90627e92d204de1641367/accept_legrand.png?raw=true "Configuration")
+
+Copy the url link
+
+![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/b4550e24b0a623c3a5a90627e92d204de1641367/copy_url.png?raw=true "Configuration")
+
+Paste 
+
+![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/b4550e24b0a623c3a5a90627e92d204de1641367/paste_url.png?raw=true "Configuration")
+
+![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/b4550e24b0a623c3a5a90627e92d204de1641367/end.png?raw=true "Configuration")
+![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/b4550e24b0a623c3a5a90627e92d204de1641367/climate.png?raw=true "Configuration")
+
