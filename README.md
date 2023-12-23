@@ -25,7 +25,7 @@ Submit your request and wait for a response via email from Legrand (it usually t
 If your app has been approved, you should find in the email your "Client ID" and "Client Secret" attributes.
 
 ```
-Public Url = https://github.com/andrea-mattioli/bticino_x8000_custom_component
+Public Url = https://github.com/andrea-mattioli/bticino_x8000_component
 ```
 ```
 First Reply Url = https://my.home-assistant.io/
