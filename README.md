@@ -36,6 +36,10 @@ First Reply Url = https://my.home-assistant.io/
 ![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/b4550e24b0a623c3a5a90627e92d204de1641367/app3.png?raw=true "App Register")
 ![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/b4550e24b0a623c3a5a90627e92d204de1641367/app4.png?raw=true "App Register")
 
+### 1.4. Enable third party access
+
+From the official "Thermostat" app go to Account --> Third party access
+
 ## 2. CONFIGURATION
 
 ### 2.1. Update your config
