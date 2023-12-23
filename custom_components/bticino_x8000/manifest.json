@@ -1,13 +1,13 @@
 {
-    "domain": "bticino_x8000",
-    "name": "Bticino X8000",
-    "integration_type": "entity",
-    "documentation": "https://github.com/andrea-mattioli/bticino_x8000_component/blob/main/README.md",
-    "dependencies": [],
-    "codeowners": ["@andrea-mattioli"],
-    "requirements": [],
-    "iot_class": "cloud_polling",
-    "config_flow": true,
-    "version": "0.1",
-    "issue_tracker": "https://github.com/andrea-mattioli/bticino_x8000_component/issues"
-  }
+  "domain": "bticino_x8000",
+  "name": "Bticino X8000",
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/andrea-mattioli/bticino_x8000_component/blob/main/README.md",
+  "integration_type": "entity",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/andrea-mattioli/bticino_x8000_component/issues",
+  "codeowners": ["@andrea-mattioli"],
+  "requirements": [],
+  "version": "0.1"
+}
