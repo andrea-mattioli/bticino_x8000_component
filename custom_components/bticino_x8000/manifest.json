@@ -5,7 +5,6 @@
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/andrea-mattioli/bticino_x8000_component/blob/main/README.md",
-  "integration_type": "entity",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/andrea-mattioli/bticino_x8000_component/issues",
   "requirements": [],
