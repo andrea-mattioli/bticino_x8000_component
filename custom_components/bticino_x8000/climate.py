@@ -1,29 +1,25 @@
+# from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 
 # from homeassistant.const import ATTR_TEMPERATURE, TEMP_CELSIUS
 from typing import Any, cast
-from homeassistant.util import dt as dt_util
-from homeassistant.helpers import config_validation as cv, entity_platform
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-# from datetime import datetime, timedelta
-from datetime import datetime, timedelta, timezone
+import voluptuous as vol
+
 from homeassistant.components.climate import (
     ATTR_PRESET_MODE,
     DEFAULT_MIN_TEMP,
     PRESET_AWAY,
-    PRESET_NONE,
     PRESET_BOOST,
     PRESET_HOME,
+    PRESET_NONE,
     ClimateEntity,
     ClimateEntityFeature,
     HVACAction,
     HVACMode,
 )
-from homeassistant.helpers.dispatcher import async_dispatcher_connect
-import voluptuous as vol
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_SUGGESTED_AREA,
     ATTR_TEMPERATURE,
@@ -31,18 +27,24 @@ from homeassistant.const import (
     STATE_OFF,
     UnitOfTemperature,
 )
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import config_validation as cv, entity_platform
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import dt as dt_util
 
+from .api import BticinoX8000Api
 from .const import (
+    ATTR_BOOST_MODE,
+    ATTR_END_DATETIME,
+    ATTR_TARGET_TEMPERATURE,
+    ATTR_TIME_BOOST_MODE,
+    ATTR_TIME_PERIOD,
     DOMAIN,
+    SERVICE_CLEAR_TEMPERATURE_SETTING,
     SERVICE_SET_BOOST_MODE,
     SERVICE_SET_TEMPERATURE_WITH_END_DATETIME,
     SERVICE_SET_TEMPERATURE_WITH_TIME_PERIOD,
-    SERVICE_CLEAR_TEMPERATURE_SETTING,
-    ATTR_END_DATETIME,
-    ATTR_TARGET_TEMPERATURE,
-    ATTR_TIME_PERIOD,
-    ATTR_TIME_BOOST_MODE,
-    ATTR_BOOST_MODE,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -63,9 +65,8 @@ class BticinoX8000ClimateEntity(ClimateEntity):
     _attr_max_temp = DEFAULT_MAX_TEMP
     _custom_attributes = {}
 
-    def __init__(
-        self, bticino_api, plant_id, topology_id, topology_name, programs
-    ) -> None:
+    def __init__(self, data, plant_id, topology_id, thermostat_name, programs) -> None:
+        """Init."""
         self._attr_hvac_modes = [
             # HVACMode.AUTO,
             HVACMode.HEAT,
@@ -77,13 +78,12 @@ class BticinoX8000ClimateEntity(ClimateEntity):
             HVACAction.COOLING,
             HVACAction.OFF,
         ]
-        self._bticino_api = bticino_api
+        self._bticino_api = BticinoX8000Api(data)
         self._plant_id = plant_id
         self._topology_id = topology_id
-        self._topology_name = topology_name
         self._programs_name = programs
         self._program_number = None
-        self._name = topology_name
+        self._name = thermostat_name
         self._set_point = None
         self._temperature = None
         self._humidity = None
@@ -129,10 +129,12 @@ class BticinoX8000ClimateEntity(ClimateEntity):
 
     @property
     def target_temperature(self):
+        """Return the target temperature."""
         return self._set_point
 
     @property
     def current_temperature(self):
+        """Return the current temperature."""
         return self._temperature
 
     @property
@@ -142,7 +144,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
 
     @property
     def hvac_mode(self) -> HVACMode | None:
-        """Return current operation."""
+        """Return current operation mode."""
         if self._mode is not None and self._function is not None:
             if (
                 self._mode.lower() == "manual"
@@ -162,8 +164,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
 
     @property
     def hvac_action(self) -> HVACAction | None:
-        """Return current operation."""
-        print("HVAC_ACTION:", self._mode, self._function, self._loadState)
+        """Return current operation action."""
         if (
             self._mode is not None
             and self._function is not None
@@ -208,7 +209,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
     @callback
     def handle_webhook_update(self, event):
         """Handle webhook updates."""
-        print("EVENT:", event["data"][0])
+        _LOGGER.debug("EVENT: %s", event["data"][0])
         data_list = event["data"]
 
         _LOGGER.info("Received data from webhook")
@@ -262,19 +263,11 @@ class BticinoX8000ClimateEntity(ClimateEntity):
             self._set_point = float(set_point.get("value"))
             self._temperature = float(thermometer_data.get("value"))
             self._humidity = float(hygrometer_data.get("value"))
-            print(
-                "my data to send:",
-                self._loadState,
-                self._temperature,
-                self._humidity,
-                self._mode,
-                self._program,
-                self._activationTime,
-            )
             # Trigger an update of the entity state
             self.async_write_ha_state()
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
+        """Set hvac mode."""
         if hvac_mode == "auto":
             payload = {
                 "function": self._function,
@@ -331,7 +324,6 @@ class BticinoX8000ClimateEntity(ClimateEntity):
 
     async def _async_service_set_boost_mode(self, **kwargs: Any) -> None:
         boost_mode = kwargs[ATTR_BOOST_MODE]
-        print("NOW:", dt_util.now().strftime("%Y-%m-%dT%H:%M:%S"))
         if boost_mode == "cooling":
             set_pont = DEFAULT_MIN_TEMP
         else:
@@ -371,7 +363,6 @@ class BticinoX8000ClimateEntity(ClimateEntity):
                 "activationTime": now_timestamp + "/" + boost_90,
                 "setPoint": {"value": set_pont, "unit": self.temperature_unit},
             }
-        print("PAYLOAD:", payload)
         response = await self._bticino_api.set_chronothermostat_status(
             self._plant_id, self._topology_id, payload
         )
@@ -407,7 +398,6 @@ class BticinoX8000ClimateEntity(ClimateEntity):
     async def async_set_temperature(self, **kwargs):
         """Set new target temperature."""
         target_temperature = kwargs.get(ATTR_TEMPERATURE)
-        print(target_temperature)
         if target_temperature is not None:
             payload = {
                 "function": self._function,
@@ -442,7 +432,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
         )
 
     def calculate_remaining_time(self, date_string):
-        # Converte la stringa in un oggetto datetime consapevole del fuso orario
+        """Conver string to date object."""
         date_to_compare_str = dt_util.parse_datetime(date_string).strftime(
             "%Y-%m-%dT%H:%M:%S"
         )
@@ -464,6 +454,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
         return remaining_time
 
     async def async_sync_manual(self):
+        """Force sync chronothermostat status."""
         response = await self._bticino_api.get_chronothermostat_status(
             self._plant_id, self._topology_id
         )
@@ -498,7 +489,6 @@ class BticinoX8000ClimateEntity(ClimateEntity):
             self._temperature = float(thermometer_data["value"])
             hygrometer_data = chronothermostat_data["hygrometer"]["measures"][0]
             self._humidity = float(hygrometer_data["value"])
-            print("STATUS:", self._function, self._mode)
             self.async_write_ha_state()
         else:
             _LOGGER.error(
@@ -513,25 +503,30 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    entry_id = config_entry.entry_id
-    entry_id_options = config_entry.options[entry_id]
-    my_entity = BticinoX8000ClimateEntity(
-        hass.data[DOMAIN][entry_id]["api"],
-        entry_id_options["plant_id"],
-        entry_id_options["topology_id"],
-        entry_id_options["topology_name"],
-        entry_id_options["programs"],
-    )
-    # async_add_entities = entity_platform.current_platform.async_add_entities
-    async_add_entities([my_entity])
-    if not my_entity.has_data():
-        await my_entity.async_sync_manual()
+    """Add entry."""
+    data = config_entry.data
+    for plant_data in data["selected_thermostats"]:
+        plant_id = list(plant_data.keys())[0]
+        plant_data = list(plant_data.values())[0]
+        topology_id = plant_data.get("id")
+        thermostat_name = plant_data.get("name")
+        programs = plant_data.get("programs")
+        my_entity = BticinoX8000ClimateEntity(
+            data,
+            plant_id,
+            topology_id,
+            thermostat_name,
+            programs,
+        )
+        async_add_entities([my_entity])
+        if not my_entity.has_data():
+            await my_entity.async_sync_manual()
 
-    async_dispatcher_connect(
-        hass,
-        f"{DOMAIN}_webhook_update",
-        my_entity.handle_webhook_update,
-    )
+        async_dispatcher_connect(
+            hass,
+            f"{DOMAIN}_webhook_update",
+            my_entity.handle_webhook_update,
+        )
     platform = entity_platform.async_get_current_platform()
 
     platform.async_register_entity_service(

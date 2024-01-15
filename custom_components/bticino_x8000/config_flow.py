@@ -1,11 +1,14 @@
 import logging
 import secrets
-import aiohttp
+from urllib.parse import urlparse, parse_qs
 import voluptuous as vol
 from homeassistant import config_entries
+from homeassistant.helpers import config_validation as cv
 from homeassistant.core import HomeAssistant
-from urllib.parse import urlparse, parse_qs
 from homeassistant.helpers import network
+from homeassistant.components.webhook import (
+    async_generate_id as generate_id,
+)
 from .api import BticinoX8000Api
 from .auth import exchange_code_for_tokens
 from .const import (
@@ -13,8 +16,6 @@ from .const import (
     DEFAULT_AUTH_BASE_URL,
     AUTH_URL_ENDPOINT,
     DEFAULT_REDIRECT_URI,
-    DEFAULT_API_BASE_URL,
-    AUTH_CHECK_ENDPOINT,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -34,7 +35,6 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             _LOGGER.warning("network.NoURLAvailableError")
             external_url = "My HA external url ex: https://pippo.duckdns.com:8123 (specify the port if is not standard 443)"
 
-        # Check if there are existing entries, and if so, abort the setup
         if self._async_current_entries():
             return self.async_abort(reason="single_instance_allowed")
 
@@ -67,7 +67,6 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ),
             )
 
-        # Save user input data
         self.data = user_input
         authorization_url = self.get_authorization_url(user_input)
         message = (
@@ -113,10 +112,8 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         "Unable to identify the Authorize Code or State. Please make sure to provide a valid URL."
                     )
 
-                # Save authorization code in the data dictionary
                 self.data["code"] = code
 
-                # Use the auth module to exchange the code for tokens
                 (
                     access_token,
                     refresh_token,
@@ -128,23 +125,106 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     code,
                 )
 
-                # Save the tokens in the data dictionary
                 self.data["access_token"] = access_token
                 self.data["refresh_token"] = refresh_token
                 self.data["access_token_expires_on"] = access_token_expires_on
-                print("config_flow_data:", self.data)
-                bticino_api = BticinoX8000Api(self.data)
 
-                # Check the health of the API endpoint
-                if not await bticino_api.check_api_endpoint_health():
+                self.bticino_api = BticinoX8000Api(self.data)
+
+                if not await self.bticino_api.check_api_endpoint_health():
                     return self.async_abort(reason="Auth Failed!")
 
-                return self.async_create_entry(
-                    title="Bticino X8000 Configuration",
-                    data=self.data,
+                # Fetch and display the list of thermostats
+                plants_data = await self.bticino_api.get_plants()
+                if plants_data["status_code"] == 200:
+                    thermostat_options = {}
+                    plant_ids = list(set(plant["id"] for plant in plants_data["data"]))
+                    for plant_id in plant_ids:
+                        topologies = await self.bticino_api.get_topology(plant_id)
+                        for thermo in topologies["data"]:
+                            webhook_id = generate_id()
+                            thermostat_options.update(
+                                {
+                                    plant_id: {
+                                        "id": thermo["id"],
+                                        "name": thermo["name"],
+                                        "webhook_id": webhook_id,
+                                        "programs": await self.get_programs_from_api(
+                                            plant_id, thermo["id"]
+                                        ),
+                                    }
+                                }
+                            )
+                    self._thermostat_options = thermostat_options
+
+                return self.async_show_form(
+                    step_id="select_thermostats",
+                    data_schema=vol.Schema(
+                        {
+                            vol.Required(
+                                "selected_thermostats",
+                                description="Select Thermostats",
+                                default=[
+                                    thermostat_options[thermo]["name"]
+                                    for thermo in thermostat_options
+                                ],
+                            ): cv.multi_select(
+                                [
+                                    thermostat_options[thermo]["name"]
+                                    for thermo in thermostat_options
+                                ]
+                            ),
+                        }
+                    ),
                 )
 
             except ValueError as error:
                 _LOGGER.error(error)
                 return await self.async_step_get_authorize_code()
         return await self.async_step_user(self.data)
+
+    async def add_c2c_subscription(self, plantId, webhook_id):
+        webhook_path = "/api/webhook/"
+        webhook_endpoint = self.data["external_url"] + webhook_path + webhook_id
+        response = await self.bticino_api.set_subscribe_C2C_notifications(
+            plantId, {"EndPointUrl": webhook_endpoint}
+        )
+        if response["status_code"] == 201:
+            print("Webhook subscription registrata con successo!")
+            return response["text"]["subscriptionId"]
+
+    async def get_programs_from_api(self, plant_id, topology_id):
+        programs = await self.bticino_api.get_chronothermostat_programlist(
+            plant_id, topology_id
+        )
+        for program in programs["data"]:
+            if program["number"] == 0:
+                programs["data"].remove(program)
+        return programs["data"]
+
+    async def async_step_select_thermostats(self, user_input):
+        selected_thermostats = [
+            {
+                thermo_id: {
+                    **thermo_data,
+                    "subscription_id": await self.add_c2c_subscription(
+                        thermo_id, thermo_data["webhook_id"]
+                    ),
+                }
+            }
+            for thermo_id, thermo_data in self._thermostat_options.items()
+            if thermo_data["name"] in user_input["selected_thermostats"]
+        ]
+        return self.async_create_entry(
+            title="Bticino X8000",
+            data={
+                "client_id": self.data["client_id"],
+                "client_secret": self.data["client_secret"],
+                "subscription_key": self.data["subscription_key"],
+                "external_url": self.data["external_url"],
+                "access_token": self.data["access_token"],
+                "refresh_token": self.data["refresh_token"],
+                "access_token_expires_on": self.data["access_token_expires_on"],
+                "selected_thermostats": selected_thermostats,
+            },
+        )
