@@ -1,6 +1,6 @@
 # Thermostat Bticino X8000 (NO NETATMO) Home Assistant Integration
 
-[![stable](https://badges.github.io/stability-badges/dist/stable.svg)](https://github.com/badges/stability-badges)
+[![CodeQL](https://github.com/andrea-mattioli/bticino_x8000_component/actions/workflows/codeql_analysis.yml/badge.svg)](https://github.com/andrea-mattioli/bticino_x8000_component/actions/workflows/codeql_analysis.yml)
 
 [![Sponsor Mattiols via GitHub Sponsors](https://raw.githubusercontent.com/andrea-mattioli/bticino_X8000_rest_api/test/screenshots/sponsor.png)](https://github.com/sponsors/andrea-mattioli)
 
@@ -18,7 +18,7 @@ Sign in, go to menu "API > Subscriptions" and make sure you have "Starter Kit fo
 
 ### 1.3. Register a new application
 Go to menu "User > My Applications" and click on "Create new" to register a new application:
-- Insert a **valid public URL** in "First Reply Url". 
+- Insert a **valid public URL** in "First Reply Url".
 - Make sure to tick the checkbox near scopes `comfort.read` and `comfort.write`
 
 Submit your request and wait for a response via email from Legrand (it usually takes 1-2 days max).
@@ -62,7 +62,7 @@ Copy the url link
 
 ![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/b4550e24b0a623c3a5a90627e92d204de1641367/copy_url.png?raw=true "Configuration")
 
-Paste 
+Paste
 
 ![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/b4550e24b0a623c3a5a90627e92d204de1641367/paste_url.png?raw=true "Configuration")
 
