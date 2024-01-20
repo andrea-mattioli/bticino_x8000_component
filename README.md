@@ -66,6 +66,9 @@ Paste
 
 ![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/b4550e24b0a623c3a5a90627e92d204de1641367/paste_url.png?raw=true "Configuration")
 
+Select thermostats to add as Entity (Default ALL)
+
+![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/d0f46d9f1331f78d9f2c29c7bc0ff44d221b34f9/select_thermo.png?raw=true "Configuration")
 ![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/b4550e24b0a623c3a5a90627e92d204de1641367/end.png?raw=true "Configuration")
 ![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/b4550e24b0a623c3a5a90627e92d204de1641367/climate.png?raw=true "Configuration")
 
