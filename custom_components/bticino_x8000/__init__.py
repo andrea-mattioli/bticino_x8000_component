@@ -50,19 +50,6 @@ async def async_setup_entry(
         hass.config_entries.async_forward_entry_setup(config_entry, "climate")
     )
 
-    async def update_token(now):
-        _LOGGER.debug("Refreshing access token")
-        (
-            access_token,
-            refresh_token,
-            access_token_expires_on,
-        ) = await refresh_access_token(data)
-
-        data["access_token"] = access_token
-        data["refresh_token"] = refresh_token
-        data["access_token_expires_on"] = dt_util.as_utc(access_token_expires_on)
-        hass.config_entries.async_update_entry(config_entry, data=data)
-
     return True
 
 
