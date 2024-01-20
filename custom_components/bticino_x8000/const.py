@@ -5,7 +5,14 @@ WEBHOOK_ID = "bticino_x8000_webhook"
 DEFAULT_AUTH_BASE_URL: str = "https://partners-login.eliotbylegrand.com"
 DEFAULT_API_BASE_URL: str = "https://api.developer.legrand.com"
 DEFAULT_REDIRECT_URI: str = "https://my.home-assistant.io/"
-
+CLIENT_ID = "Client id"
+CLIENT_SECRET = "Client secret"
+SUBSCRIPTION_KEY = "Subscription key"
+################################
+# Do not change! Will be set by release workflow
+INTEGRATION_VERSION = "main"  # git tag will be used
+MIN_REQUIRED_HA_VERSION = "2024.1.0b0"  # set min required version in hacs.json
+################################
 
 # Endpoints
 AUTH_REQ_ENDPOINT = "/token"

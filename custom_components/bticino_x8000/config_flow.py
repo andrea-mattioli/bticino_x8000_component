@@ -13,9 +13,12 @@ from .api import BticinoX8000Api
 from .auth import exchange_code_for_tokens
 from .const import (
     AUTH_URL_ENDPOINT,
+    CLIENT_ID,
+    CLIENT_SECRET,
     DEFAULT_AUTH_BASE_URL,
     DEFAULT_REDIRECT_URI,
     DOMAIN,
+    SUBSCRIPTION_KEY,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -43,17 +46,17 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         vol.Required(
                             "client_id",
                             description="Client ID",
-                            default="Client ID",
+                            default=CLIENT_ID,
                         ): str,
                         vol.Required(
                             "client_secret",
                             description="Client Secret",
-                            default="Client Secret",
+                            default=CLIENT_SECRET,
                         ): str,
                         vol.Required(
                             "subscription_key",
                             description="Subscription Key",
-                            default="Subscription Key",
+                            default=SUBSCRIPTION_KEY,
                         ): str,
                         vol.Required(
                             "external_url",

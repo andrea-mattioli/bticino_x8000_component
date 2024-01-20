@@ -8,5 +8,5 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/andrea-mattioli/bticino_x8000_component/issues",
   "requirements": [],
-  "version": "0.1"
+  "version": "v0.0.0"
 }
