@@ -1,9 +1,7 @@
-# from datetime import datetime, timedelta
-from datetime import datetime, timedelta, timezone
+"""Climate."""
+from datetime import datetime
 import logging
-
-# from homeassistant.const import ATTR_TEMPERATURE, TEMP_CELSIUS
-from typing import Any, cast
+from typing import Any
 
 import voluptuous as vol
 
@@ -20,13 +18,7 @@ from homeassistant.components.climate import (
     HVACMode,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import (
-    ATTR_SUGGESTED_AREA,
-    ATTR_TEMPERATURE,
-    PRECISION_HALVES,
-    STATE_OFF,
-    UnitOfTemperature,
-)
+from homeassistant.const import ATTR_TEMPERATURE, PRECISION_HALVES, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv, entity_platform
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
@@ -63,6 +55,8 @@ class BticinoX8000ClimateEntity(ClimateEntity):
     _attr_target_temperature_step = PRECISION_HALVES
     _attr_hvac_mode = HVACMode.AUTO
     _attr_max_temp = DEFAULT_MAX_TEMP
+    _attr_min_temp = DEFAULT_MIN_TEMP
+    _attr_target_temperature_step = 0.1
     _custom_attributes = {}
 
     def __init__(self, data, plant_id, topology_id, thermostat_name, programs) -> None:
@@ -201,7 +195,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
 
     @property
     def state_attributes(self):
-        """Restituisce gli attributi di stato personalizzati."""
+        """Return the list of cusom attributes."""
         attrs = super().state_attributes or {}
         attrs.update(self._custom_attributes)
         return attrs
@@ -212,7 +206,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
         _LOGGER.debug("EVENT: %s", event["data"][0])
         data_list = event["data"]
 
-        _LOGGER.info("Received data from webhook")
+        _LOGGER.debug("Received data from webhook")
 
         if not data_list:
             _LOGGER.warning("Received empty webhook update data")
@@ -421,6 +415,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
                 )
 
     def has_data(self):
+        """Entity data."""
         return (
             self._set_point is not None
             and self._temperature is not None
@@ -541,7 +536,7 @@ async def async_setup_entry(
         SERVICE_SET_TEMPERATURE_WITH_END_DATETIME,
         {
             vol.Required(ATTR_TARGET_TEMPERATURE): vol.All(
-                vol.Coerce(float), vol.Range(min=7, max=DEFAULT_MAX_TEMP)
+                vol.Coerce(float), vol.Range(min=DEFAULT_MIN_TEMP, max=DEFAULT_MAX_TEMP)
             ),
             vol.Required(ATTR_END_DATETIME): cv.datetime,
         },
@@ -551,7 +546,7 @@ async def async_setup_entry(
         SERVICE_SET_TEMPERATURE_WITH_TIME_PERIOD,
         {
             vol.Required(ATTR_TARGET_TEMPERATURE): vol.All(
-                vol.Coerce(float), vol.Range(min=7, max=DEFAULT_MAX_TEMP)
+                vol.Coerce(float), vol.Range(min=DEFAULT_MIN_TEMP, max=DEFAULT_MAX_TEMP)
             ),
             vol.Required(ATTR_TIME_PERIOD): vol.All(
                 cv.time_period,

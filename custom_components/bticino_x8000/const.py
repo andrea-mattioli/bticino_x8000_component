@@ -1,3 +1,5 @@
+"""Constant."""
+
 DOMAIN = "bticino_x8000"
 WEBHOOK_ID = "bticino_x8000_webhook"
 DEFAULT_AUTH_BASE_URL: str = "https://partners-login.eliotbylegrand.com"

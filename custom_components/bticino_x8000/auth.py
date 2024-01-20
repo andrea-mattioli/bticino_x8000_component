@@ -1,15 +1,17 @@
+from datetime import timedelta  # noqa: D100
 import logging
+
 import aiohttp
-import json
-from datetime import datetime, timedelta
-from .const import DEFAULT_AUTH_BASE_URL, AUTH_REQ_ENDPOINT
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+
+from homeassistant.util import dt as dt_util
+
+from .const import AUTH_REQ_ENDPOINT, DEFAULT_AUTH_BASE_URL
 
 _LOGGER = logging.getLogger(__name__)
 
 
 async def exchange_code_for_tokens(client_id, client_secret, redirect_uri, code):
+    """Get access token."""
     token_url = f"{DEFAULT_AUTH_BASE_URL}{AUTH_REQ_ENDPOINT}"
     payload = {
         "code": code,
@@ -18,13 +20,14 @@ async def exchange_code_for_tokens(client_id, client_secret, redirect_uri, code)
         "client_id": client_id,
     }
 
-    async with aiohttp.ClientSession() as session:
-        async with session.post(token_url, data=payload) as response:
-            token_data = await response.json()
+    async with aiohttp.ClientSession() as session, session.post(
+        token_url, data=payload
+    ) as response:
+        token_data = await response.json()
 
     access_token = "Bearer " + token_data.get("access_token")
     refresh_token = token_data.get("refresh_token")
-    access_token_expires_on = datetime.utcnow() + timedelta(
+    access_token_expires_on = dt_util.utcnow() + timedelta(
         seconds=token_data.get("expires_in")
     )
 
@@ -32,6 +35,7 @@ async def exchange_code_for_tokens(client_id, client_secret, redirect_uri, code)
 
 
 async def refresh_access_token(data):
+    """Refresh access token."""
     token_url = f"{DEFAULT_AUTH_BASE_URL}{AUTH_REQ_ENDPOINT}"
     payload = {
         "refresh_token": data["refresh_token"],
@@ -40,12 +44,13 @@ async def refresh_access_token(data):
         "client_id": data["client_id"],
     }
 
-    async with aiohttp.ClientSession() as session:
-        async with session.post(token_url, data=payload) as response:
-            token_data = await response.json()
+    async with aiohttp.ClientSession() as session, session.post(
+        token_url, data=payload
+    ) as response:
+        token_data = await response.json()
     access_token = "Bearer " + token_data.get("access_token")
     refresh_token = token_data.get("refresh_token")
-    access_token_expires_on = datetime.utcnow() + timedelta(
+    access_token_expires_on = dt_util.utcnow() + timedelta(
         seconds=token_data.get("expires_in")
     )
     return access_token, refresh_token, access_token_expires_on

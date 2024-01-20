@@ -1,22 +1,26 @@
-# api.py
-
-import logging
-import aiohttp
+"""Api."""
 import json
+import logging
+
+import aiohttp
+
 from .auth import refresh_access_token
 from .const import (
-    DEFAULT_API_BASE_URL,
-    THERMOSTAT_API_ENDPOINT,
-    PLANTS,
-    TOPOLOGY,
     AUTH_CHECK_ENDPOINT,
+    DEFAULT_API_BASE_URL,
+    PLANTS,
+    THERMOSTAT_API_ENDPOINT,
+    TOPOLOGY,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
 
 class BticinoX8000Api:
-    def __init__(self, data):
+    """Legrand API class."""
+
+    def __init__(self, data) -> None:
+        """Init function."""
         self.data = data
         self.header = {
             "Authorization": self.data["access_token"],
@@ -25,6 +29,7 @@ class BticinoX8000Api:
         }
 
     async def check_api_endpoint_health(self):
+        """Check API endpoint helth."""
         url = f"{DEFAULT_API_BASE_URL}{AUTH_CHECK_ENDPOINT}"
 
         payload = {
@@ -41,12 +46,19 @@ class BticinoX8000Api:
                     content = await response.text()
                     if status_code == 200:
                         _LOGGER.info(
-                            f"Authenticated!. HTTP {status_code}, Content: {content}, data: {self.data}, Headers: {self.header}"
+                            "Authenticated!. HTTP %s, Content: %s, data: %s, Headers: %s",
+                            status_code,
+                            content,
+                            self.data,
+                            self.header,
                         )
                         return True
                     else:
                         _LOGGER.warning(
-                            f"L'endpoint API non è sano. Tentativo di refresh del token. HTTP {status_code}, Content: {content}, data: {self.data},"
+                            "The endpoint API is unhealthy. Attempt to update token. HTTP %s, Content: %s, data: %s",
+                            status_code,
+                            content,
+                            self.data,
                         )
                         # Retry the request on 401 Unauthorized
                         if await self.handle_unauthorized_error(response):
@@ -55,17 +67,18 @@ class BticinoX8000Api:
 
                         return False
             except Exception as e:
-                _LOGGER.warning(
-                    f"L'endpoint API non è sano. Tentativo di refresh del token. Errore: {e}"
+                _LOGGER.error(
+                    "The endpoint API is unhealthy. Attempt to update token. Error: %s",
+                    e,
                 )
                 return False
 
     async def handle_unauthorized_error(self, response):
+        """Head off 401 Unauthorized."""
         status_code = response.status
 
         if status_code == 401:
             _LOGGER.warning("Received 401 Unauthorized error. Attempting token refresh")
-            # Ottieni i nuovi dati dopo il refresh
             (
                 access_token,
                 refresh_token,
@@ -76,9 +89,9 @@ class BticinoX8000Api:
                 "Ocp-Apim-Subscription-Key": self.data["subscription_key"],
                 "Content-Type": "application/json",
             }
-            print("NEW_HEADERS:", self.header)
 
     async def get_plants(self):
+        """Retrieve thermostat plants."""
         url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}{PLANTS}"
         async with aiohttp.ClientSession() as session:
             try:
@@ -107,6 +120,7 @@ class BticinoX8000Api:
                 }
 
     async def get_topology(self, plantId):
+        """Retrieve thermostat topology."""
         url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}{PLANTS}/{plantId}{TOPOLOGY}"
         async with aiohttp.ClientSession() as session:
             try:
@@ -123,18 +137,19 @@ class BticinoX8000Api:
                         # Retry the request on 401 Unauthorized
                         if await self.handle_unauthorized_error(response):
                             # Retry the original request
-                            return await self.get_plants()
+                            return await self.get_topology()
                         return {
                             "status_code": status_code,
-                            "error": f"Errore nella richiesta di get_topology. Content: {content}, HEADEr: {self.header}, URL: {url}",
+                            "error": f"Failed to get topology: Content: {content}, HEADEr: {self.header}, URL: {url}",
                         }
             except Exception as e:
                 return {
                     "status_code": 500,
-                    "error": f"Errore nella richiesta di get_topology: {e}",
+                    "error": f"Failed to get topology: {e}",
                 }
 
     async def set_chronothermostat_status(self, plantId, moduleId, data):
+        """Set thermostat status."""
         url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}/chronothermostat/thermoregulation/addressLocation{PLANTS}/{plantId}/modules/parameter/id/value/{moduleId}"
         async with aiohttp.ClientSession() as session:
             try:
@@ -159,6 +174,7 @@ class BticinoX8000Api:
                 }
 
     async def get_chronothermostat_status(self, plantId, moduleId):
+        """Get thermostat status."""
         url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}/chronothermostat/thermoregulation/addressLocation{PLANTS}/{plantId}/modules/parameter/id/value/{moduleId}"
         async with aiohttp.ClientSession() as session:
             try:
@@ -179,6 +195,7 @@ class BticinoX8000Api:
                 }
 
     async def get_chronothermostat_measures(self, plantId, moduleId):
+        """Get thermostat measures."""
         url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}/chronothermostat/thermoregulation/addressLocation{PLANTS}/{plantId}/modules/parameter/id/value/{moduleId}/measures"
         async with aiohttp.ClientSession() as session:
             try:
@@ -201,6 +218,7 @@ class BticinoX8000Api:
                 }
 
     async def get_chronothermostat_programlist(self, plantId, moduleId):
+        """Get thermostat programlist."""
         url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}/chronothermostat/thermoregulation/addressLocation{PLANTS}/{plantId}/modules/parameter/id/value/{moduleId}/programlist"
         async with aiohttp.ClientSession() as session:
             try:
@@ -226,6 +244,7 @@ class BticinoX8000Api:
                 }
 
     async def get_subscriptions_C2C_notifications(self):
+        """Get C2C subscriptions."""
         url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}/subscription"
         async with aiohttp.ClientSession() as session:
             try:
@@ -249,6 +268,7 @@ class BticinoX8000Api:
                 }
 
     async def set_subscribe_C2C_notifications(self, plantId, data):
+        """Add C2C subscriptions."""
         url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}{PLANTS}/{plantId}/subscription"
         async with aiohttp.ClientSession() as session:
             try:
@@ -271,6 +291,7 @@ class BticinoX8000Api:
                 }
 
     async def delete_subscribe_C2C_notifications(self, plantId, subscriptionId):
+        """Remove C2C subscriptions."""
         url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}{PLANTS}/{plantId}/subscription/{subscriptionId}"
         async with aiohttp.ClientSession() as session:
             try:

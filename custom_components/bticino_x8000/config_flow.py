@@ -1,38 +1,35 @@
+"""Config Flow."""
 import logging
 import secrets
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import parse_qs, urlparse
+
 import voluptuous as vol
+
 from homeassistant import config_entries
+from homeassistant.components.webhook import async_generate_id as generate_id
 from homeassistant.helpers import config_validation as cv
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers import network
-from homeassistant.components.webhook import (
-    async_generate_id as generate_id,
-)
+
 from .api import BticinoX8000Api
 from .auth import exchange_code_for_tokens
 from .const import (
-    DOMAIN,
-    DEFAULT_AUTH_BASE_URL,
     AUTH_URL_ENDPOINT,
+    DEFAULT_AUTH_BASE_URL,
     DEFAULT_REDIRECT_URI,
+    DOMAIN,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
 
 class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+    """Bticino ConfigFlow."""
+
     async def async_step_user(self, user_input=None):
+        """User configuration."""
         try:
-            external_url = network.get_url(
-                self.hass,
-                allow_internal=False,
-                allow_ip=False,
-                require_ssl=True,
-                require_standard_port=True,
-            )
-        except network.NoURLAvailableError:
-            _LOGGER.warning("network.NoURLAvailableError")
+            external_url = self.hass.config.external_url
+        except:
+            _LOGGER.warning("No external url available, using default")
             external_url = "My HA external url ex: https://pippo.duckdns.com:8123 (specify the port if is not standard 443)"
 
         if self._async_current_entries():
@@ -88,6 +85,7 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     def get_authorization_url(self, user_input):
+        """Compose the auth url."""
         state = secrets.token_hex(16)
         return (
             f"{DEFAULT_AUTH_BASE_URL}{AUTH_URL_ENDPOINT}?"
@@ -98,12 +96,13 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_get_authorize_code(self, user_input=None):
+        """Get authorization code."""
         if user_input is not None:
             try:
                 parsed_url = urlparse(user_input["browser_url"])
-                _LOGGER.info(f"Parsed URL: {parsed_url}")
+                _LOGGER.debug("Parsed URL: %s", parsed_url)
                 query_params = parse_qs(parsed_url.query)
-                _LOGGER.info(f"Query Parameters: {query_params}")
+                _LOGGER.debug("Query Parameters: %s", query_params)
                 code = query_params.get("code", [""])[0]
                 state = query_params.get("state", [""])[0]
 
@@ -184,16 +183,18 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return await self.async_step_user(self.data)
 
     async def add_c2c_subscription(self, plantId, webhook_id):
+        """Subscribe C2C."""
         webhook_path = "/api/webhook/"
         webhook_endpoint = self.data["external_url"] + webhook_path + webhook_id
         response = await self.bticino_api.set_subscribe_C2C_notifications(
             plantId, {"EndPointUrl": webhook_endpoint}
         )
         if response["status_code"] == 201:
-            print("Webhook subscription registrata con successo!")
+            _LOGGER.debug("Webhook subscription registrata con successo!")
             return response["text"]["subscriptionId"]
 
     async def get_programs_from_api(self, plant_id, topology_id):
+        """Retreive the program list."""
         programs = await self.bticino_api.get_chronothermostat_programlist(
             plant_id, topology_id
         )
@@ -203,6 +204,7 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return programs["data"]
 
     async def async_step_select_thermostats(self, user_input):
+        """User can select one o more thermostat to add."""
         selected_thermostats = [
             {
                 thermo_id: {

@@ -15,28 +15,28 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class BticinoX8000WebhookHandler:
+    """Webhook Class."""
+
     def __init__(
         self,
         hass: HomeAssistant,
         webhook_id,
-    ):
+    ) -> None:
+        """Init."""
         self.hass = hass
         self.webhook_id = webhook_id
 
     async def handle_webhook(self, hass: HomeAssistant, webhook_id, request) -> None:
+        """Handle webhook."""
         try:
             data = await request.json()
         except ValueError as err:
             _LOGGER.error("Error in data: %s", err)
             data = {}
-        # Aggiungi un log per l'esito della gestione del webhook
         _LOGGER.debug("Got webhook with id: %s and data: %s", webhook_id, data)
 
         # Dispatch an event to update climate entities with webhook data
-        # self.hass.bus.async_fire(f"{DOMAIN}_webhook_update", {"data": data})
         async_dispatcher_send(hass, f"{DOMAIN}_webhook_update", {"data": data})
-
-        # Restituisci una risposta HTTP OK
         return Response(text="OK", status=200)
 
     async def async_register_webhook(self):
@@ -52,4 +52,5 @@ class BticinoX8000WebhookHandler:
 
     async def async_remove_webhook(self):
         """Remove the webhook."""
+        _LOGGER.debug("Unregister webhook with id: %s ", self.webhook_id)
         webhook_unregister(self.hass, self.webhook_id)
