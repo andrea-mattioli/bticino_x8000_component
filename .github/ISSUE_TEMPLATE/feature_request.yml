@@ -36,7 +36,7 @@ body:
       description: >
         If for your feature a sample requests exist, please paste it here.
         This speed things up, specially for new commands
-      render: txt
+      render: text
 
   - type: textarea
     attributes:
