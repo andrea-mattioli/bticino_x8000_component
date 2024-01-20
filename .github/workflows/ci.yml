@@ -43,6 +43,9 @@ jobs:
         with:
           python-version: ${{ env.DEFAULT_PYTHON }}
           cache: "pip"
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
       # Following steps cannot run by pre-commit.ci as repo = local
       - name: Run mypy
         run: mypy custom_components/
