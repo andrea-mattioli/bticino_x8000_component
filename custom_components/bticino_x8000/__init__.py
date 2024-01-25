@@ -11,8 +11,6 @@ from .api import BticinoX8000Api
 from .auth import refresh_access_token
 from .webhook import BticinoX8000WebhookHandler
 
-# import datetime
-
 PLATFORMS = [Platform.CLIMATE]
 
 _LOGGER = logging.getLogger(__name__)
@@ -21,11 +19,11 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
-):
+) -> bool:
     """Set up the Bticino_X8000 component."""
     data = dict(config_entry.data)
 
-    async def update_token(now):
+    async def update_token(now: None) -> None:
         _LOGGER.debug("Refreshing access token")
         (
             access_token,
@@ -53,7 +51,7 @@ async def async_setup_entry(
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry):
+async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Unload Entry."""
     data = config_entry.data
     bticino_api = BticinoX8000Api(data)

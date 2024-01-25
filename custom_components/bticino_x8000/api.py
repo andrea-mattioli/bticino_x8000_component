@@ -1,6 +1,7 @@
 """Api."""
 import json
 import logging
+from typing import Any
 
 import aiohttp
 
@@ -19,7 +20,7 @@ _LOGGER = logging.getLogger(__name__)
 class BticinoX8000Api:
     """Legrand API class."""
 
-    def __init__(self, data) -> None:
+    def __init__(self, data: dict[str, Any]) -> None:
         """Init function."""
         self.data = data
         self.header = {
@@ -28,7 +29,7 @@ class BticinoX8000Api:
             "Content-Type": "application/json",
         }
 
-    async def check_api_endpoint_health(self):
+    async def check_api_endpoint_health(self) -> bool:
         """Check API endpoint helth."""
         url = f"{DEFAULT_API_BASE_URL}{AUTH_CHECK_ENDPOINT}"
 
@@ -73,7 +74,7 @@ class BticinoX8000Api:
                 )
                 return False
 
-    async def handle_unauthorized_error(self, response):
+    async def handle_unauthorized_error(self, response: aiohttp.ClientResponse) -> bool:
         """Head off 401 Unauthorized."""
         status_code = response.status
 
@@ -89,8 +90,11 @@ class BticinoX8000Api:
                 "Ocp-Apim-Subscription-Key": self.data["subscription_key"],
                 "Content-Type": "application/json",
             }
+            return True
+        else:
+            return False
 
-    async def get_plants(self):
+    async def get_plants(self) -> dict[str, Any]:
         """Retrieve thermostat plants."""
         url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}{PLANTS}"
         async with aiohttp.ClientSession() as session:
@@ -119,7 +123,7 @@ class BticinoX8000Api:
                     "error": f"Errore nella richiesta di get_plants: {e}",
                 }
 
-    async def get_topology(self, plantId):
+    async def get_topology(self, plantId: str) -> dict[str, Any]:
         """Retrieve thermostat topology."""
         url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}{PLANTS}/{plantId}{TOPOLOGY}"
         async with aiohttp.ClientSession() as session:
@@ -137,7 +141,7 @@ class BticinoX8000Api:
                         # Retry the request on 401 Unauthorized
                         if await self.handle_unauthorized_error(response):
                             # Retry the original request
-                            return await self.get_topology()
+                            return await self.get_topology(plantId)
                         return {
                             "status_code": status_code,
                             "error": f"Failed to get topology: Content: {content}, HEADEr: {self.header}, URL: {url}",
@@ -148,7 +152,9 @@ class BticinoX8000Api:
                     "error": f"Failed to get topology: {e}",
                 }
 
-    async def set_chronothermostat_status(self, plantId, moduleId, data):
+    async def set_chronothermostat_status(
+        self, plantId: str, moduleId: str, data: dict[str, Any]
+    ) -> dict[str, Any]:
         """Set thermostat status."""
         url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}/chronothermostat/thermoregulation/addressLocation{PLANTS}/{plantId}/modules/parameter/id/value/{moduleId}"
         async with aiohttp.ClientSession() as session:
@@ -173,7 +179,9 @@ class BticinoX8000Api:
                     "error": f"Errore nella richiesta di set_chronothermostat_status: {e}",
                 }
 
-    async def get_chronothermostat_status(self, plantId, moduleId):
+    async def get_chronothermostat_status(
+        self, plantId: str, moduleId: str
+    ) -> dict[str, Any]:
         """Get thermostat status."""
         url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}/chronothermostat/thermoregulation/addressLocation{PLANTS}/{plantId}/modules/parameter/id/value/{moduleId}"
         async with aiohttp.ClientSession() as session:
@@ -194,7 +202,9 @@ class BticinoX8000Api:
                     "error": f"Errore nella richiesta di get_chronothermostat_status: {e}",
                 }
 
-    async def get_chronothermostat_measures(self, plantId, moduleId):
+    async def get_chronothermostat_measures(
+        self, plantId: str, moduleId: str
+    ) -> dict[str, Any]:
         """Get thermostat measures."""
         url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}/chronothermostat/thermoregulation/addressLocation{PLANTS}/{plantId}/modules/parameter/id/value/{moduleId}/measures"
         async with aiohttp.ClientSession() as session:
@@ -217,7 +227,9 @@ class BticinoX8000Api:
                     "error": f"Errore nella richiesta di get_chronothermostat_measures: {e}",
                 }
 
-    async def get_chronothermostat_programlist(self, plantId, moduleId):
+    async def get_chronothermostat_programlist(
+        self, plantId: str, moduleId: str
+    ) -> dict[str, Any]:
         """Get thermostat programlist."""
         url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}/chronothermostat/thermoregulation/addressLocation{PLANTS}/{plantId}/modules/parameter/id/value/{moduleId}/programlist"
         async with aiohttp.ClientSession() as session:
@@ -243,7 +255,7 @@ class BticinoX8000Api:
                     "error": f"Errore nella richiesta di get_chronothermostat_programlist: {e}",
                 }
 
-    async def get_subscriptions_C2C_notifications(self):
+    async def get_subscriptions_C2C_notifications(self) -> dict[str, Any]:
         """Get C2C subscriptions."""
         url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}/subscription"
         async with aiohttp.ClientSession() as session:
@@ -267,7 +279,9 @@ class BticinoX8000Api:
                     "error": f"Errore nella richiesta di get_subscriptions_C2C_notifications: {e}",
                 }
 
-    async def set_subscribe_C2C_notifications(self, plantId, data):
+    async def set_subscribe_C2C_notifications(
+        self, plantId: str, data: dict[str, Any]
+    ) -> dict[str, Any]:
         """Add C2C subscriptions."""
         url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}{PLANTS}/{plantId}/subscription"
         async with aiohttp.ClientSession() as session:
@@ -290,7 +304,9 @@ class BticinoX8000Api:
                     "error": f"Errore nella richiesta di set_subscribe_C2C_notifications: {e}",
                 }
 
-    async def delete_subscribe_C2C_notifications(self, plantId, subscriptionId):
+    async def delete_subscribe_C2C_notifications(
+        self, plantId: str, subscriptionId: str
+    ) -> dict[str, Any]:
         """Remove C2C subscriptions."""
         url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}{PLANTS}/{plantId}/subscription/{subscriptionId}"
         async with aiohttp.ClientSession() as session:

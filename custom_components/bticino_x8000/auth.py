@@ -1,5 +1,6 @@
 from datetime import timedelta  # noqa: D100
 import logging
+from typing import Any
 
 import aiohttp
 
@@ -10,7 +11,9 @@ from .const import AUTH_REQ_ENDPOINT, DEFAULT_AUTH_BASE_URL
 _LOGGER = logging.getLogger(__name__)
 
 
-async def exchange_code_for_tokens(client_id, client_secret, redirect_uri, code):
+async def exchange_code_for_tokens(
+    client_id: str, client_secret: str, redirect_uri: str, code: str
+) -> tuple[str, str, str]:
     """Get access token."""
     token_url = f"{DEFAULT_AUTH_BASE_URL}{AUTH_REQ_ENDPOINT}"
     payload = {
@@ -34,7 +37,7 @@ async def exchange_code_for_tokens(client_id, client_secret, redirect_uri, code)
     return access_token, refresh_token, access_token_expires_on
 
 
-async def refresh_access_token(data):
+async def refresh_access_token(data: dict[str, Any]) -> tuple[str, str, str]:
     """Refresh access token."""
     token_url = f"{DEFAULT_AUTH_BASE_URL}{AUTH_REQ_ENDPOINT}"
     payload = {

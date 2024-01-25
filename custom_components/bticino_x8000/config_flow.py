@@ -1,12 +1,14 @@
 """Config Flow."""
 import logging
 import secrets
+from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.components.webhook import async_generate_id as generate_id
+from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import config_validation as cv
 
 from .api import BticinoX8000Api
@@ -24,10 +26,12 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type:ignore
     """Bticino ConfigFlow."""
 
-    async def async_step_user(self, user_input=None):
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
         """User configuration."""
         try:
             external_url = self.hass.config.external_url
@@ -87,7 +91,7 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors={"base": message},
         )
 
-    def get_authorization_url(self, user_input):
+    def get_authorization_url(self, user_input: dict[str, Any]) -> str:
         """Compose the auth url."""
         state = secrets.token_hex(16)
         return (
@@ -98,7 +102,9 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             + f"&redirect_uri={DEFAULT_REDIRECT_URI}"
         )
 
-    async def async_step_get_authorize_code(self, user_input=None):
+    async def async_step_get_authorize_code(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
         """Get authorization code."""
         if user_input is not None:
             try:
@@ -185,7 +191,7 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return await self.async_step_get_authorize_code()
         return await self.async_step_user(self.data)
 
-    async def add_c2c_subscription(self, plantId, webhook_id):
+    async def add_c2c_subscription(self, plantId: str, webhook_id: str) -> str | None:
         """Subscribe C2C."""
         webhook_path = "/api/webhook/"
         webhook_endpoint = self.data["external_url"] + webhook_path + webhook_id
@@ -194,19 +200,27 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
         if response["status_code"] == 201:
             _LOGGER.debug("Webhook subscription registrata con successo!")
-            return response["text"]["subscriptionId"]
+            subscriptionId: str = response["text"]["subscriptionId"]
+            return subscriptionId
+        else:
+            return None
 
-    async def get_programs_from_api(self, plant_id, topology_id):
+    async def get_programs_from_api(
+        self, plant_id: str, topology_id: str
+    ) -> list[dict[str, Any]]:
         """Retreive the program list."""
         programs = await self.bticino_api.get_chronothermostat_programlist(
             plant_id, topology_id
         )
-        for program in programs["data"]:
-            if program["number"] == 0:
-                programs["data"].remove(program)
-        return programs["data"]
+        filtered_programs = [
+            program for program in programs["data"] if program["number"] != 0
+        ]
 
-    async def async_step_select_thermostats(self, user_input):
+        return filtered_programs
+
+    async def async_step_select_thermostats(
+        self, user_input: dict[str, Any]
+    ) -> FlowResult:
         """User can select one o more thermostat to add."""
         selected_thermostats = [
             {

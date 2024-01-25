@@ -20,13 +20,15 @@ class BticinoX8000WebhookHandler:
     def __init__(
         self,
         hass: HomeAssistant,
-        webhook_id,
+        webhook_id: str,
     ) -> None:
         """Init."""
         self.hass = hass
-        self.webhook_id = webhook_id
+        self.webhook_id: str = webhook_id
 
-    async def handle_webhook(self, hass: HomeAssistant, webhook_id, request) -> None:
+    async def handle_webhook(
+        self, hass: HomeAssistant, webhook_id: str, request: Request
+    ) -> Response:
         """Handle webhook."""
         try:
             data = await request.json()
@@ -39,7 +41,7 @@ class BticinoX8000WebhookHandler:
         async_dispatcher_send(hass, f"{DOMAIN}_webhook_update", {"data": data})
         return Response(text="OK", status=200)
 
-    async def async_register_webhook(self):
+    async def async_register_webhook(self) -> None:
         """Register the webhook."""
         webhook_register(
             self.hass,
@@ -50,7 +52,7 @@ class BticinoX8000WebhookHandler:
             local_only=False,
         )
 
-    async def async_remove_webhook(self):
+    async def async_remove_webhook(self) -> None:
         """Remove the webhook."""
         _LOGGER.debug("Unregister webhook with id: %s ", self.webhook_id)
         webhook_unregister(self.hass, self.webhook_id)
