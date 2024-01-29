@@ -1,5 +1,5 @@
 """Climate."""
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 from typing import Any
 
@@ -47,7 +47,7 @@ DEFAULT_MIN_TEMP = 7
 BOOST_MODES = ["heating", "cooling"]
 
 
-class BticinoX8000ClimateEntity(ClimateEntity):
+class BticinoX8000ClimateEntity(ClimateEntity):  # type:ignore
     """Representation of a Bticino X8000 Climate entity."""
 
     _attr_supported_features = SUPPORT_FLAGS
@@ -57,12 +57,19 @@ class BticinoX8000ClimateEntity(ClimateEntity):
     _attr_max_temp = DEFAULT_MAX_TEMP
     _attr_min_temp = DEFAULT_MIN_TEMP
     _attr_target_temperature_step = 0.1
-    _custom_attributes = {}
+    _custom_attributes: dict[str, Any] = {}
 
-    def __init__(self, data, plant_id, topology_id, thermostat_name, programs) -> None:
+    def __init__(
+        self,
+        data: dict[str, Any],
+        plant_id: str,
+        topology_id: str,
+        thermostat_name: str,
+        programs: list[dict[str, Any]],
+    ) -> None:
         """Init."""
         self._attr_hvac_modes = [
-            # HVACMode.AUTO,
+            HVACMode.AUTO,
             HVACMode.HEAT,
             HVACMode.COOL,
             HVACMode.OFF,
@@ -76,80 +83,83 @@ class BticinoX8000ClimateEntity(ClimateEntity):
         self._plant_id = plant_id
         self._topology_id = topology_id
         self._programs_name = programs
-        self._program_number = None
+        self._program_number: list[dict[str, Any]] = []
         self._name = thermostat_name
-        self._set_point = None
-        self._temperature = None
-        self._humidity = None
-        self._function = None
-        self._mode = None
-        self._program = None
-        self._loadState = None
-        self._activationTime = None
+        self._set_point: float | None = None
+        self._temperature: float | None = None
+        self._humidity: float | None = None
+        self._function: str = ""
+        self._mode: str = ""
+        self._program: str = ""
+        self._loadState: str = ""
+        self._activationTime: str = ""
 
-    def _update_attrs(self, custom_attrs):
+    def _update_attrs(self, custom_attrs: dict[str, Any]) -> None:
         """Update custom attributes."""
         self._custom_attributes = custom_attrs
 
-    def _get_program_name(self, program):
+    def _get_program_name(self, program: list[dict[str, Any]]) -> str:
         for thermostat_program in self._programs_name:
             if int(program[0]["number"]) == int(thermostat_program["number"]):
-                return thermostat_program["name"]
+                program_name: str = thermostat_program["name"]
+                return program_name
+        return "Program not found"
 
-    def _get_program_number(self, program):
+    def _get_program_number(self, program: str) -> str:
         for thermostat_program in self._programs_name:
             if program == thermostat_program["name"]:
-                return thermostat_program["number"]
+                program_number: str = thermostat_program["number"]
+                return program_number
+        return "Program not found"
 
     @property
-    def unique_id(self):
+    def unique_id(self) -> str:
         """Return a unique ID to use for this entity."""
         return f"{self._topology_id}_climate"
 
     @property
-    def name(self):
+    def name(self) -> str:
         """Return the name of the climate entity."""
         return self._name
 
     @property
-    def temperature_unit(self):
+    def temperature_unit(self) -> str:
         """Return the unit of measurement."""
         return "°C"
 
     @property
-    def umidity_unit(self):
+    def umidity_unit(self) -> str:
         """Return the unit of measurement."""
         return "%"
 
     @property
-    def target_temperature(self):
+    def target_temperature(self) -> float | None:
         """Return the target temperature."""
         return self._set_point
 
     @property
-    def current_temperature(self):
+    def current_temperature(self) -> float | None:
         """Return the current temperature."""
         return self._temperature
 
     @property
-    def current_humidity(self):
+    def current_humidity(self) -> float | None:
         """Return the current humidity."""
         return self._humidity
 
     @property
     def hvac_mode(self) -> HVACMode | None:
         """Return current operation mode."""
-        if self._mode is not None and self._function is not None:
+        if self._mode:
+            if self._mode.lower() == "automatic":
+                return HVACMode.AUTO
+        if self._mode and self._function:
             if (
-                self._mode.lower() == "manual"
-                or self._mode.lower() == "boost"
-                or self._mode.lower() == "automatic"
+                self._mode.lower() == "manual" or self._mode.lower() == "boost"
             ) and self._function.lower() == "heating":
                 return HVACMode.HEAT
             if (
-                self._mode.lower() == "manual"
-                or self._mode.lower() == "boost"
-                or self._mode.lower() == "automatic"
+                self._mode.lower() == "manual" or self._mode.lower() == "boost"
             ) and self._function.lower() == "cooling":
                 return HVACMode.COOL
             if self._mode.lower() == "protection" or self._mode.lower() == "off":
@@ -159,11 +169,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
     @property
     def hvac_action(self) -> HVACAction | None:
         """Return current operation action."""
-        if (
-            self._mode is not None
-            and self._function is not None
-            and self._loadState is not None
-        ):
+        if self._mode and self._function and self._loadState:
             if (
                 (
                     self._mode.lower() == "manual"
@@ -188,20 +194,20 @@ class BticinoX8000ClimateEntity(ClimateEntity):
                 return HVACAction.OFF
         return None
 
-    @property
-    def supported_features(self):
-        """Return the list of supported features."""
-        return SUPPORT_FLAGS
+    # @property
+    # def supported_features(self) -> int:
+    #    """Return the list of supported features."""
+    #    return SUPPORT_FLAGS
 
     @property
-    def state_attributes(self):
+    def state_attributes(self) -> dict[str, Any]:
         """Return the list of cusom attributes."""
         attrs = super().state_attributes or {}
         attrs.update(self._custom_attributes)
         return attrs
 
-    @callback
-    def handle_webhook_update(self, event):
+    @callback  # type:ignore
+    def handle_webhook_update(self, event: dict[str, Any]) -> None:
         """Handle webhook updates."""
         _LOGGER.debug("EVENT: %s", event["data"][0])
         data_list = event["data"]
@@ -277,14 +283,14 @@ class BticinoX8000ClimateEntity(ClimateEntity):
         elif hvac_mode == "heat":
             payload = {
                 "function": "heating",
-                "mode": "automatic",
+                "mode": "manual",
                 "setPoint": {"value": self._set_point, "unit": self.temperature_unit},
                 "programs": [{"number": self._program_number[0]["number"]}],
             }
         elif hvac_mode == "cool":
             payload = {
                 "function": "cooling",
-                "mode": "automatic",
+                "mode": "manual",
                 "setPoint": {"value": self._set_point, "unit": self.temperature_unit},
                 "programs": [{"number": self._program_number[0]["number"]}],
             }
@@ -298,13 +304,15 @@ class BticinoX8000ClimateEntity(ClimateEntity):
                 response,
             )
 
-    async def async_therm_manual(self, target_temperature, end_timestamp):
-        return True
+    async def async_therm_manual(
+        self, target_temperature: str, end_timestamp: int
+    ) -> None:
+        return None
 
     async def _async_service_set_temperature_with_end_datetime(
         self, **kwargs: Any
     ) -> None:
-        target_temperature = kwargs[ATTR_TARGET_TEMPERATURE]
+        target_temperature: str = kwargs[ATTR_TARGET_TEMPERATURE]
         end_datetime = kwargs[ATTR_END_DATETIME]
         end_timestamp = int(dt_util.as_timestamp(end_datetime))
 
@@ -324,15 +332,9 @@ class BticinoX8000ClimateEntity(ClimateEntity):
             set_pont = DEFAULT_MAX_TEMP
 
         now_timestamp = dt_util.now().strftime("%Y-%m-%dT%H:%M:%S")
-        boost_30 = (dt_util.now() + datetime.timedelta(minutes=30)).strftime(
-            "%Y-%m-%dT%H:%M:%S"
-        )
-        boost_60 = (dt_util.now() + datetime.timedelta(minutes=60)).strftime(
-            "%Y-%m-%dT%H:%M:%S"
-        )
-        boost_90 = (dt_util.now() + datetime.timedelta(minutes=90)).strftime(
-            "%Y-%m-%dT%H:%M:%S"
-        )
+        boost_30 = (dt_util.now() + timedelta(minutes=30)).strftime("%Y-%m-%dT%H:%M:%S")
+        boost_60 = (dt_util.now() + timedelta(minutes=60)).strftime("%Y-%m-%dT%H:%M:%S")
+        boost_90 = (dt_util.now() + timedelta(minutes=90)).strftime("%Y-%m-%dT%H:%M:%S")
 
         boost_time = kwargs[ATTR_TIME_BOOST_MODE]
 
@@ -387,9 +389,9 @@ class BticinoX8000ClimateEntity(ClimateEntity):
 
     async def _async_service_clear_temperature_setting(self, **kwargs: Any) -> None:
         _LOGGER.debug("Clearing %s temperature setting", self.entity_id)
-        await self.async_therm_manual(None, None)
+        await self.async_therm_manual("None", 0)
 
-    async def async_set_temperature(self, **kwargs):
+    async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set new target temperature."""
         target_temperature = kwargs.get(ATTR_TEMPERATURE)
         if target_temperature is not None:
@@ -414,19 +416,42 @@ class BticinoX8000ClimateEntity(ClimateEntity):
                     response,
                 )
 
-    def has_data(self):
+    def has_data(
+        self,
+    ) -> tuple[float | None, float | None, float | None, str, str, str, str] | None:
         """Entity data."""
-        return (
+        if (
             self._set_point is not None
             and self._temperature is not None
             and self._humidity is not None
-            and self._function is not None
-            and self._mode is not None
-            and self._program is not None
-            and self._loadState is not None
-        )
+            and not self._function
+            and not self._mode
+            and not self._program
+            and not self._loadState
+        ):
+            return (
+                self._set_point,
+                self._temperature,
+                self._humidity,
+                self._function,
+                self._mode,
+                self._program,
+                self._loadState,
+            )
+        else:
+            return None
 
-    def calculate_remaining_time(self, date_string):
+        # return (
+        #    self._set_point is not None
+        #    and self._temperature is not None
+        #    and self._humidity is not None
+        #    and self._function is not None
+        #    and self._mode is not None
+        #    and self._program is not None
+        #    and self._loadState is not None
+        # )
+
+    def calculate_remaining_time(self, date_string: str) -> dict[str, Any]:
         """Conver string to date object."""
         date_to_compare_str = dt_util.parse_datetime(date_string).strftime(
             "%Y-%m-%dT%H:%M:%S"
@@ -448,7 +473,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
         }
         return remaining_time
 
-    async def async_sync_manual(self):
+    async def async_sync_manual(self) -> None:
         """Force sync chronothermostat status."""
         response = await self._bticino_api.get_chronothermostat_status(
             self._plant_id, self._topology_id
@@ -560,4 +585,3 @@ async def async_setup_entry(
         {},
         "_async_service_clear_temperature_setting",
     )
-    return True

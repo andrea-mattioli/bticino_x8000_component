@@ -28,7 +28,7 @@ async def exchange_code_for_tokens(
     ) as response:
         token_data = await response.json()
 
-    access_token = "Bearer " + token_data.get("access_token")
+    access_token = "Bearer " + str(token_data.get("access_token"))
     refresh_token = token_data.get("refresh_token")
     access_token_expires_on = dt_util.utcnow() + timedelta(
         seconds=token_data.get("expires_in")
