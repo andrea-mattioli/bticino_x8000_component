@@ -1,10 +1,9 @@
 """Auth."""
-from datetime import timedelta  # noqa: D100
 import logging
+from datetime import timedelta  # noqa: D100
 from typing import Any
 
 import aiohttp
-
 from homeassistant.util import dt as dt_util
 
 from .const import AUTH_REQ_ENDPOINT, DEFAULT_AUTH_BASE_URL

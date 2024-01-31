@@ -1,10 +1,9 @@
 """Climate."""
-from datetime import timedelta
 import logging
+from datetime import timedelta
 from typing import Any
 
 import voluptuous as vol
-
 from homeassistant.components.climate import (
     ClimateEntity,
     ClimateEntityFeature,
@@ -14,7 +13,8 @@ from homeassistant.components.climate import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import config_validation as cv, entity_platform
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import entity_platform
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
@@ -421,7 +421,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):  # type:ignore
         return True
 
     def calculate_remaining_time(self, date_string: str) -> dict[str, Any]:
-        """Conver string to date object."""
+        """Convert string to date object."""
         date_to_compare_str = dt_util.parse_datetime(date_string).strftime(
             "%Y-%m-%dT%H:%M:%S"
         )

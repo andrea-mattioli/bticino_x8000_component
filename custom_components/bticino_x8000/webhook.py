@@ -2,11 +2,8 @@
 import logging
 
 from aiohttp.web import Request, Response
-
-from homeassistant.components.webhook import (
-    async_register as webhook_register,
-    async_unregister as webhook_unregister,
-)
+from homeassistant.components.webhook import async_register as webhook_register
+from homeassistant.components.webhook import async_unregister as webhook_unregister
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 

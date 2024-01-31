@@ -1,7 +1,9 @@
 {
   "domain": "bticino_x8000",
   "name": "Bticino X8000",
-  "codeowners": ["@andrea-mattioli"],
+  "codeowners": [
+    "@andrea-mattioli"
+  ],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/andrea-mattioli/bticino_x8000_component/blob/main/README.md",

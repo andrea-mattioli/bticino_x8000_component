@@ -5,7 +5,6 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import voluptuous as vol
-
 from homeassistant import config_entries
 from homeassistant.components.webhook import async_generate_id as generate_id
 from homeassistant.data_entry_flow import FlowResult
@@ -219,7 +218,7 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type:
     async def get_programs_from_api(
         self, plant_id: str, topology_id: str
     ) -> list[dict[str, Any]] | None:
-        """Retreive the program list."""
+        """Retrieve the program list."""
         if self.bticino_api is not None:
             programs = await self.bticino_api.get_chronothermostat_programlist(
                 plant_id, topology_id
