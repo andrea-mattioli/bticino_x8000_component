@@ -79,7 +79,7 @@ jobs:
         uses: gavv/pull-request-artifacts@v2
         with:
           # Commit hash that triggered PR
-          commit: ${{ github.event.pull_request.head.sha }}
+          commit: ${{ github.sha }}
 
           # Token for current repo (used to post PR comment)
           repo-token: ${{ secrets.GITHUB_TOKEN }}
