@@ -71,9 +71,9 @@ jobs:
 
       - name: 📦 Create zip file for the integration
         run: |
-          cd "${{ github.workspace }}/custom_components/deebot"
-          zip deebot.zip -r ./
-          mv deebot.zip "${{ github.workspace }}/"
+          cd "${{ github.workspace }}/custom_components/bticino_x8000"
+          zip bticino_x8000.zip -r ./
+          mv bticino_x8000.zip "${{ github.workspace }}/"
 
       - name: 📤 Create comment with the artifiactory
         uses: gavv/pull-request-artifacts@v2
