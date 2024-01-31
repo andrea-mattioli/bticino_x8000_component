@@ -64,7 +64,7 @@ jobs:
     needs:
       - code-quality
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    if: github.event_name == 'pull_request'
     steps:
       - name: 📥 Checkout the repository
         uses: actions/checkout@v4
@@ -79,7 +79,7 @@ jobs:
         uses: gavv/pull-request-artifacts@v2
         with:
           # Commit hash that triggered PR
-          commit: ${{ github.sha }}
+          commit: ${{ github.event.pull_request.head.sha }}
 
           # Token for current repo (used to post PR comment)
           repo-token: ${{ secrets.GITHUB_TOKEN }}
