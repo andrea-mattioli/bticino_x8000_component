@@ -43,6 +43,7 @@ PRECISION_HALVES = 0.1
 
 
 # pylint: disable=R0902
+# pylint: disable=W0223
 class BticinoX8000ClimateEntity(ClimateEntity):  # type:ignore
     """Bticino X8000 Climate entity."""
 
