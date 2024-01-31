@@ -1,1 +1,9 @@
-custom_components/bticino_x8000/__pycache__/
+__pycache__
+pythonenv*
+venv
+.venv
+.coverage
+.idea
+.mypy_cache
+.pytest_cache
+/config
