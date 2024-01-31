@@ -54,9 +54,9 @@ class BticinoX8000Api:
                             self.header,
                         )
                         return True
-                    else:
+                    if status_code == 401:
                         _LOGGER.warning(
-                            "The endpoint API is unhealthy. Attempt to update token. HTTP %s, Content: %s, data: %s",
+                            "Attempt to update token. HTTP %s, Content: %s, data: %s",
                             status_code,
                             content,
                             self.data,
@@ -67,12 +67,12 @@ class BticinoX8000Api:
                             return await self.check_api_endpoint_health()
 
                         return False
-            except Exception as e:
+            except aiohttp.ClientError as e:
                 _LOGGER.error(
                     "The endpoint API is unhealthy. Attempt to update token. Error: %s",
                     e,
                 )
-                return False
+            return False
 
     async def handle_unauthorized_error(self, response: aiohttp.ClientResponse) -> bool:
         """Head off 401 Unauthorized."""
@@ -82,8 +82,8 @@ class BticinoX8000Api:
             _LOGGER.warning("Received 401 Unauthorized error. Attempting token refresh")
             (
                 access_token,
-                refresh_token,
-                access_token_expires_on,
+                _,
+                _,
             ) = await refresh_access_token(self.data)
             self.header = {
                 "Authorization": access_token,
@@ -91,8 +91,7 @@ class BticinoX8000Api:
                 "Content-Type": "application/json",
             }
             return True
-        else:
-            return False
+        return False
 
     async def get_plants(self) -> dict[str, Any]:
         """Retrieve thermostat plants."""
@@ -108,24 +107,29 @@ class BticinoX8000Api:
                             "status_code": status_code,
                             "data": json.loads(content)["plants"],
                         }
-                    else:
+                    if status_code == 401:
                         # Retry the request on 401 Unauthorized
                         if await self.handle_unauthorized_error(response):
                             # Retry the original request
                             return await self.get_plants()
-                        return {
-                            "status_code": status_code,
-                            "error": f"Errore nella richiesta di get_plants. Content: {content}, URL: {url}, HEADER: {self.header}",
-                        }
-            except Exception as e:
+                    return {
+                        "status_code": status_code,
+                        "error": (
+                            f"Failed get_plants. "
+                            f"Content: {content}, "
+                            f"URL: {url}, "
+                            f"HEADER: {self.header}"
+                        ),
+                    }
+            except aiohttp.ClientError as e:
                 return {
                     "status_code": 500,
-                    "error": f"Errore nella richiesta di get_plants: {e}",
+                    "error": f"Failed get_plants: {e}",
                 }
 
-    async def get_topology(self, plantId: str) -> dict[str, Any]:
+    async def get_topology(self, plant_id: str) -> dict[str, Any]:
         """Retrieve thermostat topology."""
-        url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}{PLANTS}/{plantId}{TOPOLOGY}"
+        url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}{PLANTS}/{plant_id}{TOPOLOGY}"
         async with aiohttp.ClientSession() as session:
             try:
                 async with session.get(url, headers=self.header) as response:
@@ -137,26 +141,30 @@ class BticinoX8000Api:
                             "status_code": status_code,
                             "data": json.loads(content)["plant"]["modules"],
                         }
-                    else:
+                    if status_code == 401:
                         # Retry the request on 401 Unauthorized
                         if await self.handle_unauthorized_error(response):
                             # Retry the original request
-                            return await self.get_topology(plantId)
-                        return {
-                            "status_code": status_code,
-                            "error": f"Failed to get topology: Content: {content}, HEADEr: {self.header}, URL: {url}",
-                        }
-            except Exception as e:
+                            return await self.get_topology(plant_id)
+                    return {
+                        "status_code": status_code,
+                        "error": "Failed to get topology.",
+                    }
+            except aiohttp.ClientError as e:
                 return {
                     "status_code": 500,
                     "error": f"Failed to get topology: {e}",
                 }
 
     async def set_chronothermostat_status(
-        self, plantId: str, moduleId: str, data: dict[str, Any]
+        self, plant_id: str, module_id: str, data: dict[str, Any]
     ) -> dict[str, Any]:
         """Set thermostat status."""
-        url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}/chronothermostat/thermoregulation/addressLocation{PLANTS}/{plantId}/modules/parameter/id/value/{moduleId}"
+        url = (
+            f"{DEFAULT_API_BASE_URL}"
+            f"{THERMOSTAT_API_ENDPOINT}/chronothermostat/thermoregulation/"
+            f"addressLocation{PLANTS}/{plant_id}/modules/parameter/id/value/{module_id}"
+        )
         async with aiohttp.ClientSession() as session:
             try:
                 async with session.post(
@@ -165,97 +173,114 @@ class BticinoX8000Api:
                     status_code = response.status
                     content = await response.text()
 
-                    # Retry the request on 401 Unauthorized
-                    if await self.handle_unauthorized_error(response):
-                        # Retry the original request
-                        return await self.set_chronothermostat_status(
-                            plantId, moduleId, data
-                        )
+                    if status_code == 401:
+                        # Retry the request on 401 Unauthorized
+                        if await self.handle_unauthorized_error(response):
+                            # Retry the original request
+                            return await self.set_chronothermostat_status(
+                                plant_id, module_id, data
+                            )
 
                     return {"status_code": status_code, "text": content}
-            except Exception as e:
+            except aiohttp.ClientError as e:
                 return {
                     "status_code": 500,
-                    "error": f"Errore nella richiesta di set_chronothermostat_status: {e}",
+                    "error": (
+                        f"Errore nella richiesta di set_chronothermostat_status: "
+                        f"{e}"
+                    ),
                 }
 
     async def get_chronothermostat_status(
-        self, plantId: str, moduleId: str
+        self, plant_id: str, module_id: str
     ) -> dict[str, Any]:
         """Get thermostat status."""
-        url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}/chronothermostat/thermoregulation/addressLocation{PLANTS}/{plantId}/modules/parameter/id/value/{moduleId}"
+        url = (
+            f"{DEFAULT_API_BASE_URL}"
+            f"{THERMOSTAT_API_ENDPOINT}/chronothermostat/thermoregulation/"
+            f"addressLocation{PLANTS}/{plant_id}/modules/parameter/id/value/{module_id}"
+        )
         async with aiohttp.ClientSession() as session:
             try:
                 async with session.get(url, headers=self.header) as response:
                     status_code = response.status
                     content = await response.text()
-
-                    # Retry the request on 401 Unauthorized
-                    if await self.handle_unauthorized_error(response):
-                        # Retry the original request
-                        return await self.get_chronothermostat_status(plantId, moduleId)
-
+                    if status_code == 401:
+                        # Retry the request on 401 Unauthorized
+                        if await self.handle_unauthorized_error(response):
+                            # Retry the original request
+                            return await self.get_chronothermostat_status(
+                                plant_id, module_id
+                            )
                     return {"status_code": status_code, "data": json.loads(content)}
-            except Exception as e:
+            except aiohttp.ClientError as e:
                 return {
                     "status_code": 500,
                     "error": f"Errore nella richiesta di get_chronothermostat_status: {e}",
                 }
 
     async def get_chronothermostat_measures(
-        self, plantId: str, moduleId: str
+        self, plant_id: str, module_id: str
     ) -> dict[str, Any]:
         """Get thermostat measures."""
-        url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}/chronothermostat/thermoregulation/addressLocation{PLANTS}/{plantId}/modules/parameter/id/value/{moduleId}/measures"
+        url = (
+            f"{DEFAULT_API_BASE_URL}"
+            f"{THERMOSTAT_API_ENDPOINT}/chronothermostat/thermoregulation/"
+            f"addressLocation{PLANTS}/{plant_id}/modules/parameter/id/value/{module_id}/measures"
+        )
         async with aiohttp.ClientSession() as session:
             try:
                 async with session.get(url, headers=self.header) as response:
                     status_code = response.status
                     content = await response.text()
-
-                    # Retry the request on 401 Unauthorized
-                    if await self.handle_unauthorized_error(response):
-                        # Retry the original request
-                        return await self.get_chronothermostat_measures(
-                            plantId, moduleId
-                        )
-
+                    if status_code == 401:
+                        # Retry the request on 401 Unauthorized
+                        if await self.handle_unauthorized_error(response):
+                            # Retry the original request
+                            return await self.get_chronothermostat_measures(
+                                plant_id, module_id
+                            )
                     return {"status_code": status_code, "data": json.loads(content)}
-            except Exception as e:
+            except aiohttp.ClientError as e:
                 return {
                     "status_code": 500,
                     "error": f"Errore nella richiesta di get_chronothermostat_measures: {e}",
                 }
 
     async def get_chronothermostat_programlist(
-        self, plantId: str, moduleId: str
+        self, plant_id: str, module_id: str
     ) -> dict[str, Any]:
         """Get thermostat programlist."""
-        url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}/chronothermostat/thermoregulation/addressLocation{PLANTS}/{plantId}/modules/parameter/id/value/{moduleId}/programlist"
+        url = (
+            f"{DEFAULT_API_BASE_URL}"
+            f"{THERMOSTAT_API_ENDPOINT}/chronothermostat/thermoregulation/"
+            f"addressLocation{PLANTS}/{plant_id}/modules/parameter/id/value/{module_id}/"
+            f"programlist"
+        )
         async with aiohttp.ClientSession() as session:
             try:
                 async with session.get(url, headers=self.header) as response:
                     status_code = response.status
                     content = await response.text()
-
-                    # Retry the request on 401 Unauthorized
-                    if await self.handle_unauthorized_error(response):
-                        # Retry the original request
-                        return await self.get_chronothermostat_programlist(
-                            plantId, moduleId
-                        )
+                    if status_code == 401:
+                        # Retry the request on 401 Unauthorized
+                        if await self.handle_unauthorized_error(response):
+                            # Retry the original request
+                            return await self.get_chronothermostat_programlist(
+                                plant_id, module_id
+                            )
 
                     return {
                         "status_code": status_code,
                         "data": json.loads(content)["chronothermostats"][0]["programs"],
                     }
-            except Exception as e:
+            except aiohttp.ClientError as e:
                 return {
                     "status_code": 500,
                     "error": f"Errore nella richiesta di get_chronothermostat_programlist: {e}",
                 }
 
-    async def get_subscriptions_C2C_notifications(self) -> dict[str, Any]:
+    async def get_subscriptions_c2c_notifications(self) -> dict[str, Any]:
         """Get C2C subscriptions."""
         url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}/subscription"
         async with aiohttp.ClientSession() as session:
@@ -263,27 +288,27 @@ class BticinoX8000Api:
                 async with session.get(url, headers=self.header) as response:
                     status_code = response.status
                     content = await response.text()
-
-                    # Retry the request on 401 Unauthorized
-                    if await self.handle_unauthorized_error(response):
-                        # Retry the original request
-                        return await self.get_subscriptions_C2C_notifications()
+                    if status_code == 401:
+                        # Retry the request on 401 Unauthorized
+                        if await self.handle_unauthorized_error(response):
+                            # Retry the original request
+                            return await self.get_subscriptions_c2c_notifications()
 
                     return {
                         "status_code": status_code,
                         "data": json.loads(content) if status_code == 200 else content,
                     }
-            except Exception as e:
+            except aiohttp.ClientError as e:
                 return {
                     "status_code": 500,
                     "error": f"Errore nella richiesta di get_subscriptions_C2C_notifications: {e}",
                 }
 
-    async def set_subscribe_C2C_notifications(
-        self, plantId: str, data: dict[str, Any]
+    async def set_subscribe_c2c_notifications(
+        self, plant_id: str, data: dict[str, Any]
     ) -> dict[str, Any]:
         """Add C2C subscriptions."""
-        url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}{PLANTS}/{plantId}/subscription"
+        url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}{PLANTS}/{plant_id}/subscription"
         async with aiohttp.ClientSession() as session:
             try:
                 async with session.post(
@@ -291,39 +316,46 @@ class BticinoX8000Api:
                 ) as response:
                     status_code = response.status
                     content = await response.text()
-
-                    # Retry the request on 401 Unauthorized
-                    if await self.handle_unauthorized_error(response):
-                        # Retry the original request
-                        return await self.set_subscribe_C2C_notifications(plantId, data)
+                    if status_code == 401:
+                        # Retry the request on 401 Unauthorized
+                        if await self.handle_unauthorized_error(response):
+                            # Retry the original request
+                            return await self.set_subscribe_c2c_notifications(
+                                plant_id, data
+                            )
 
                     return {"status_code": status_code, "text": json.loads(content)}
-            except Exception as e:
+            except aiohttp.ClientError as e:
                 return {
                     "status_code": 500,
                     "error": f"Errore nella richiesta di set_subscribe_C2C_notifications: {e}",
                 }
 
-    async def delete_subscribe_C2C_notifications(
-        self, plantId: str, subscriptionId: str
+    async def delete_subscribe_c2c_notifications(
+        self, plant_id: str, subscription_id: str
     ) -> dict[str, Any]:
         """Remove C2C subscriptions."""
-        url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}{PLANTS}/{plantId}/subscription/{subscriptionId}"
+        url = (
+            f"{DEFAULT_API_BASE_URL}"
+            f"{THERMOSTAT_API_ENDPOINT}"
+            f"{PLANTS}/{plant_id}/subscription/{subscription_id}"
+        )
+
         async with aiohttp.ClientSession() as session:
             try:
                 async with session.delete(url, headers=self.header) as response:
                     status_code = response.status
                     content = await response.text()
-
-                    # Retry the request on 401 Unauthorized
-                    if await self.handle_unauthorized_error(response):
-                        # Retry the original request
-                        return await self.delete_subscribe_C2C_notifications(
-                            plantId, subscriptionId
-                        )
+                    if status_code == 401:
+                        # Retry the request on 401 Unauthorized
+                        if await self.handle_unauthorized_error(response):
+                            # Retry the original request
+                            return await self.delete_subscribe_c2c_notifications(
+                                plant_id, subscription_id
+                            )
 
                     return {"status_code": status_code, "text": content}
-            except Exception as e:
+            except aiohttp.ClientError as e:
                 return {
                     "status_code": 500,
                     "error": f"Errore nella richiesta di delete_subscribe_C2C_notifications: {e}",

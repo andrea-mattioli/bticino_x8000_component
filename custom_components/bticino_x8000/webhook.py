@@ -1,15 +1,16 @@
+"""Webhook."""
 import logging
-import aiohttp
-from aiohttp.web import Request, HTTPBadRequest, Response
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-from homeassistant.const import EVENT_HOMEASSISTANT_STOP, Platform
-from homeassistant.helpers.dispatcher import async_dispatcher_send
-from .const import DOMAIN
+
+from aiohttp.web import Request, Response
+
 from homeassistant.components.webhook import (
     async_register as webhook_register,
     async_unregister as webhook_unregister,
 )
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.dispatcher import async_dispatcher_send
+
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 

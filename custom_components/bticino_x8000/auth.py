@@ -1,3 +1,4 @@
+"""Auth."""
 from datetime import timedelta  # noqa: D100
 import logging
 from typing import Any
@@ -12,7 +13,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 async def exchange_code_for_tokens(
-    client_id: str, client_secret: str, redirect_uri: str, code: str
+    client_id: str, client_secret: str, code: str
 ) -> tuple[str, str, str]:
     """Get access token."""
     token_url = f"{DEFAULT_AUTH_BASE_URL}{AUTH_REQ_ENDPOINT}"

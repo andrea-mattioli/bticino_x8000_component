@@ -29,15 +29,24 @@ _LOGGER = logging.getLogger(__name__)
 class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type:ignore
     """Bticino ConfigFlow."""
 
+    def __init__(self) -> None:
+        """Init."""
+        self.data: dict[str, Any] = {}
+        self._thermostat_options: dict[str, Any] = {}
+        self.bticino_api: BticinoX8000Api | None = None
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """User configuration."""
-        try:
+        if self.hass.config.external_url is not None:
             external_url = self.hass.config.external_url
-        except:
-            _LOGGER.warning("No external url available, using default")
-            external_url = "My HA external url ex: https://pippo.duckdns.com:8123 (specify the port if is not standard 443)"
+        else:
+            external_url = (
+                "My HA external url ex: "
+                "https://pippo.duckdns.com:8123 "
+                "(specify the port if is not standard 443)"
+            )
 
         if self._async_current_entries():
             return self.async_abort(reason="single_instance_allowed")
@@ -74,7 +83,8 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type:
         self.data = user_input
         authorization_url = self.get_authorization_url(user_input)
         message = (
-            f"Click the link below to authorize Bticino X8000. After authorization, paste the browser URL here.\n\n"
+            f"Click the link below to authorize Bticino X8000. "
+            f"After authorization, paste the browser URL here.\n\n"
             f"{authorization_url}"
         )
         return self.async_show_form(
@@ -112,15 +122,17 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type:
                 _LOGGER.debug("Parsed URL: %s", parsed_url)
                 query_params = parse_qs(parsed_url.query)
                 _LOGGER.debug("Query Parameters: %s", query_params)
-                code = query_params.get("code", [""])[0]
-                state = query_params.get("state", [""])[0]
 
-                if not code or not state:
+                if (
+                    not query_params.get("code", [""])[0]
+                    or not query_params.get("state", [""])[0]
+                ):
                     raise ValueError(
-                        "Unable to identify the Authorize Code or State. Please make sure to provide a valid URL."
+                        "Unable to identify the Authorize Code or State. "
+                        "Please make sure to provide a valid URL."
                     )
 
-                self.data["code"] = code
+                self.data["code"] = query_params.get("code", [""])[0]
 
                 (
                     access_token,
@@ -129,8 +141,7 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type:
                 ) = await exchange_code_for_tokens(
                     self.data["client_id"],
                     self.data["client_secret"],
-                    DEFAULT_REDIRECT_URI,
-                    code,
+                    query_params.get("code", [""])[0],
                 )
 
                 self.data["access_token"] = access_token
@@ -146,7 +157,7 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type:
                 plants_data = await self.bticino_api.get_plants()
                 if plants_data["status_code"] == 200:
                     thermostat_options = {}
-                    plant_ids = list(set(plant["id"] for plant in plants_data["data"]))
+                    plant_ids = list({plant["id"] for plant in plants_data["data"]})
                     for plant_id in plant_ids:
                         topologies = await self.bticino_api.get_topology(plant_id)
                         for thermo in topologies["data"]:
@@ -173,13 +184,13 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type:
                                 "selected_thermostats",
                                 description="Select Thermostats",
                                 default=[
-                                    thermostat_options[thermo]["name"]
-                                    for thermo in thermostat_options
+                                    options["name"]
+                                    for thermo, options in thermostat_options.items()
                                 ],
                             ): cv.multi_select(
                                 [
-                                    thermostat_options[thermo]["name"]
-                                    for thermo in thermostat_options
+                                    options["name"]
+                                    for thermo, options in thermostat_options.items()
                                 ]
                             ),
                         }
@@ -191,32 +202,34 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type:
                 return await self.async_step_get_authorize_code()
         return await self.async_step_user(self.data)
 
-    async def add_c2c_subscription(self, plantId: str, webhook_id: str) -> str | None:
+    async def add_c2c_subscription(self, plant_id: str, webhook_id: str) -> str | None:
         """Subscribe C2C."""
-        webhook_path = "/api/webhook/"
-        webhook_endpoint = self.data["external_url"] + webhook_path + webhook_id
-        response = await self.bticino_api.set_subscribe_C2C_notifications(
-            plantId, {"EndPointUrl": webhook_endpoint}
-        )
-        if response["status_code"] == 201:
-            _LOGGER.debug("Webhook subscription registrata con successo!")
-            subscriptionId: str = response["text"]["subscriptionId"]
-            return subscriptionId
-        else:
-            return None
+        if self.bticino_api is not None:
+            webhook_path = "/api/webhook/"
+            webhook_endpoint = self.data["external_url"] + webhook_path + webhook_id
+            response = await self.bticino_api.set_subscribe_c2c_notifications(
+                plant_id, {"EndPointUrl": webhook_endpoint}
+            )
+            if response["status_code"] == 201:
+                _LOGGER.debug("Webhook subscription registrata con successo!")
+                subscription_id: str = response["text"]["subscriptionId"]
+                return subscription_id
+        return None
 
     async def get_programs_from_api(
         self, plant_id: str, topology_id: str
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, Any]] | None:
         """Retreive the program list."""
-        programs = await self.bticino_api.get_chronothermostat_programlist(
-            plant_id, topology_id
-        )
-        filtered_programs = [
-            program for program in programs["data"] if program["number"] != 0
-        ]
+        if self.bticino_api is not None:
+            programs = await self.bticino_api.get_chronothermostat_programlist(
+                plant_id, topology_id
+            )
+            filtered_programs = [
+                program for program in programs["data"] if program["number"] != 0
+            ]
 
-        return filtered_programs
+            return filtered_programs
+        return None
 
     async def async_step_select_thermostats(
         self, user_input: dict[str, Any]

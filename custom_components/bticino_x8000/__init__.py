@@ -1,4 +1,5 @@
-from datetime import timedelta  # noqa: D104
+"""Init."""
+from datetime import timedelta
 import logging
 
 from homeassistant.config_entries import ConfigEntry
@@ -23,22 +24,23 @@ async def async_setup_entry(
     """Set up the Bticino_X8000 component."""
     data = dict(config_entry.data)
 
-    async def update_token(now: None) -> None:
-        _LOGGER.debug("Refreshing access token")
+    async def update_token(now: dt_util.dt.datetime) -> None:
+        _LOGGER.debug("Refreshing access token: %s", now)
         (
             access_token,
             refresh_token,
             access_token_expires_on,
         ) = await refresh_access_token(data)
-
         data["access_token"] = access_token
         data["refresh_token"] = refresh_token
         data["access_token_expires_on"] = dt_util.as_utc(access_token_expires_on)
         hass.config_entries.async_update_entry(config_entry, data=data)
 
-    update_interval = timedelta(minutes=2)
+    update_interval = timedelta(minutes=60)
     async_track_time_interval(hass, update_token, update_interval)
-    await update_token(dt_util.as_timestamp(dt_util.utcnow()))
+    hass.async_add_job(update_token(None))
+    await update_token(None)
+
     for plant_data in data["selected_thermostats"]:
         plant_data = list(plant_data.values())[0]
         webhook_id = plant_data.get("webhook_id")
@@ -61,7 +63,7 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
         plant_data = list(plant_data.values())[0]
         webhook_id = plant_data.get("webhook_id")
         subscription_id = plant_data.get("subscription_id")
-        response = await bticino_api.delete_subscribe_C2C_notifications(
+        response = await bticino_api.delete_subscribe_c2c_notifications(
             plant_id, subscription_id
         )
         if response["status_code"] == 200:
