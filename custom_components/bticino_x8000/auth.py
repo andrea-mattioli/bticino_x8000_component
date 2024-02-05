@@ -1,4 +1,5 @@
 """Auth."""
+
 import logging
 from datetime import timedelta  # noqa: D100
 from typing import Any
