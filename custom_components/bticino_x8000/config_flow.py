@@ -154,26 +154,28 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type:
 
                 # Fetch and display the list of thermostats
                 plants_data = await self.bticino_api.get_plants()
+                _LOGGER.info("PLANTS_DATA: %s", plants_data)
                 if plants_data["status_code"] == 200:
-                    thermostat_options = {}
+                    thermostat_options: dict[Any, Any] = {}
                     plant_ids = list({plant["id"] for plant in plants_data["data"]})
+                    _LOGGER.info("PLANTS_LIST: %s", plant_ids)
                     for plant_id in plant_ids:
                         topologies = await self.bticino_api.get_topology(plant_id)
+                        _LOGGER.info("TOPOLOGIES_LIST: %s", topologies["data"])
+                        if plant_id not in thermostat_options:
+                            thermostat_options[plant_id] = []
                         for thermo in topologies["data"]:
-                            webhook_id = generate_id()
-                            thermostat_options.update(
+                            thermostat_options[plant_id].append(
                                 {
-                                    plant_id: {
-                                        "id": thermo["id"],
-                                        "name": thermo["name"],
-                                        "webhook_id": webhook_id,
-                                        "programs": await self.get_programs_from_api(
-                                            plant_id, thermo["id"]
-                                        ),
-                                    }
+                                    "id": thermo["id"],
+                                    "name": thermo["name"],
+                                    "programs": await self.get_programs_from_api(
+                                        plant_id, thermo["id"]
+                                    ),
                                 }
                             )
                     self._thermostat_options = thermostat_options
+                    _LOGGER.info("THERMOSTAT_DETECTED: %s", self._thermostat_options)
 
                 return self.async_show_form(
                     step_id="select_thermostats",
@@ -184,12 +186,14 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type:
                                 description="Select Thermostats",
                                 default=[
                                     options["name"]
-                                    for thermo, options in thermostat_options.items()
+                                    for options_list in self._thermostat_options.values()
+                                    for options in options_list
                                 ],
                             ): cv.multi_select(
                                 [
                                     options["name"]
-                                    for thermo, options in thermostat_options.items()
+                                    for options_list in self._thermostat_options.values()
+                                    for options in options_list
                                 ]
                             ),
                         }
@@ -200,20 +204,6 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type:
                 _LOGGER.error(error)
                 return await self.async_step_get_authorize_code()
         return await self.async_step_user(self.data)
-
-    async def add_c2c_subscription(self, plant_id: str, webhook_id: str) -> str | None:
-        """Subscribe C2C."""
-        if self.bticino_api is not None:
-            webhook_path = "/api/webhook/"
-            webhook_endpoint = self.data["external_url"] + webhook_path + webhook_id
-            response = await self.bticino_api.set_subscribe_c2c_notifications(
-                plant_id, {"EndPointUrl": webhook_endpoint}
-            )
-            if response["status_code"] == 201:
-                _LOGGER.debug("Webhook subscription registrata con successo!")
-                subscription_id: str = response["text"]["subscriptionId"]
-                return subscription_id
-        return None
 
     async def get_programs_from_api(
         self, plant_id: str, topology_id: str
@@ -235,17 +225,12 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type:
     ) -> FlowResult:
         """User can select one o more thermostat to add."""
         selected_thermostats = [
-            {
-                thermo_id: {
-                    **thermo_data,
-                    "subscription_id": await self.add_c2c_subscription(
-                        thermo_id, thermo_data["webhook_id"]
-                    ),
-                }
-            }
-            for thermo_id, thermo_data in self._thermostat_options.items()
+            {thermo_id: {**thermo_data, "webhook_id": generate_id()}}
+            for thermo_id, thermo_list in self._thermostat_options.items()
+            for thermo_data in thermo_list
             if thermo_data["name"] in user_input["selected_thermostats"]
         ]
+        _LOGGER.info("My_selected_thermostats: %s", selected_thermostats)
         return self.async_create_entry(
             title="Bticino X8000",
             data={

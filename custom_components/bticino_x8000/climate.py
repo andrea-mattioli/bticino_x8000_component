@@ -506,6 +506,7 @@ async def async_setup_entry(
             "thermostat_name": thermostat_name,
             "programs": programs,
         }
+        _LOGGER.info("THERMOSTAT_DATA: %s", config)
         my_entity = BticinoX8000ClimateEntity(data, config)
         async_add_entities([my_entity])
         if not my_entity.has_data():
