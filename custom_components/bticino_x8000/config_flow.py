@@ -1,4 +1,5 @@
 """Config Flow."""
+
 import logging
 import secrets
 from typing import Any
