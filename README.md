@@ -36,10 +36,10 @@ Public Url = https://github.com/andrea-mattioli/bticino_x8000_component
 First Reply Url = https://my.home-assistant.io/
 ```
 
-![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/b4550e24b0a623c3a5a90627e92d204de1641367/app1.png?raw=true "App Register")
-![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/b4550e24b0a623c3a5a90627e92d204de1641367/app2.png?raw=true "App Register")
-![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/b4550e24b0a623c3a5a90627e92d204de1641367/app3.png?raw=true "App Register")
-![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/b4550e24b0a623c3a5a90627e92d204de1641367/app4.png?raw=true "App Register")
+![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/images/app1.png?raw=true "App Register")
+![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/images/app2.png?raw=true "App Register")
+![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/images/app3.png?raw=true "App Register")
+![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/images/app4.png?raw=true "App Register")
 
 ### 1.4. Enable third party access
 
@@ -56,28 +56,28 @@ subscription_key: subscription key
 domain: my home assistant public domain ex: https//pippo.duckdns.com:8123 (specify the port if is not standard 443)
 ```
 
-![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/b4550e24b0a623c3a5a90627e92d204de1641367/config_entry.png?raw=true "Configuration")
+![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/images/config_entry.png?raw=true "Configuration")
 
 Copy or directly open the proposal link
 
-![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/b4550e24b0a623c3a5a90627e92d204de1641367/copy_link.png?raw=true "Configuration")
+![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/images/copy_link.png?raw=true "Configuration")
 
 Accept the scope
 
-![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/b4550e24b0a623c3a5a90627e92d204de1641367/accept_legrand.png?raw=true "Configuration")
+![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/images/accept_legrand.png?raw=true "Configuration")
 
 Copy the url link
 
-![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/b4550e24b0a623c3a5a90627e92d204de1641367/copy_url.png?raw=true "Configuration")
+![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/images/copy_url.png?raw=true "Configuration")
 
 Paste
 
-![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/b4550e24b0a623c3a5a90627e92d204de1641367/paste_url.png?raw=true "Configuration")
+![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/images/paste_url.png?raw=true "Configuration")
 
 Select thermostats to add as Entity (Default ALL)
 
 ![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/d0f46d9f1331f78d9f2c29c7bc0ff44d221b34f9/select_thermo.png?raw=true "Configuration")
-![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/b4550e24b0a623c3a5a90627e92d204de1641367/end.png?raw=true "Configuration")
-![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/b4550e24b0a623c3a5a90627e92d204de1641367/climate.png?raw=true "Configuration")
+![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/images/end.png?raw=true "Configuration")
+![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/images/climate.png?raw=true "Configuration")
 
 Thanks to everyone who will make a donation!
