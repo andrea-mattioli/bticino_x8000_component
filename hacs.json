@@ -1,5 +1,7 @@
 {
+  "filename": "bticino_x8000.zip",
   "homeassistant": "2023.4.0",
   "name": "Bticino x8000",
-  "render_readme": true
+  "render_readme": true,
+  "zip_release": true
 }
