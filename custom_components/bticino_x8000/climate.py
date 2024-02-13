@@ -230,13 +230,16 @@ class BticinoX8000ClimateEntity(ClimateEntity):  # type:ignore
             )[0]
             self._function = chronothermostat_data.get("function")
             self._mode = chronothermostat_data.get("mode")
+            self._load_state = chronothermostat_data.get("loadState")
             self._program_number = chronothermostat_data.get("programs", [])
             self._program = self._get_program_name(self._program_number)
             if "activationTime" in chronothermostat_data:
                 self._activation_time = chronothermostat_data.get("activationTime")
                 self._update_attrs(
                     {
-                        "programs": self._program,
+                        "program": self._program,
+                        "mode": self._mode.lower(),
+                        "status": self._load_state.lower(),
                         self._mode.lower()
                         + "_time_remainig": self.calculate_remaining_time(
                             self._activation_time
@@ -246,10 +249,11 @@ class BticinoX8000ClimateEntity(ClimateEntity):  # type:ignore
             else:
                 self._update_attrs(
                     {
-                        "programs": self._program,
+                        "program": self._program,
+                        "mode": self._mode.lower(),
+                        "status": self._load_state.lower(),
                     }
                 )
-            self._load_state = chronothermostat_data.get("loadState")
             self._set_point = float(set_point.get("value"))
             self._temperature = float(thermometer_data.get("value"))
             self._humidity = float(hygrometer_data.get("value"))
@@ -453,13 +457,16 @@ class BticinoX8000ClimateEntity(ClimateEntity):  # type:ignore
             chronothermostat_data = response["data"]["chronothermostats"][0]
             self._function = chronothermostat_data["function"]
             self._mode = chronothermostat_data["mode"]
+            self._load_state = chronothermostat_data["loadState"]
             self._program_number = chronothermostat_data["programs"]
             self._program = self._get_program_name(self._program_number)
             if "activationTime" in chronothermostat_data:
                 self._activation_time = chronothermostat_data.get("activationTime")
                 self._update_attrs(
                     {
-                        "programs": self._program,
+                        "program": self._program,
+                        "mode": self._mode.lower(),
+                        "status": self._load_state.lower(),
                         self._mode.lower()
                         + "_time_remainig": self.calculate_remaining_time(
                             self._activation_time
@@ -469,10 +476,11 @@ class BticinoX8000ClimateEntity(ClimateEntity):  # type:ignore
             else:
                 self._update_attrs(
                     {
-                        "programs": self._program,
+                        "program": self._program,
+                        "mode": self._mode.lower(),
+                        "status": self._load_state.lower(),
                     }
                 )
-            self._load_state = chronothermostat_data["loadState"]
             set_point_data = chronothermostat_data["setPoint"]
             self._set_point = float(set_point_data["value"])
             thermometer_data = chronothermostat_data["thermometer"]["measures"][0]
