@@ -3,16 +3,98 @@
     "error": {
       "invalid_credentials": "Credenziali non valide",
       "invalid_url": "L'URL non è valido: {message}",
-      "unable_to_connect_hass_url": "Impossibile connettersi all'URL di Home Assistant. Controlla l'URL esterno in Configurazione -> Generale",
+      "unable_to_connect_hass_url": "Impossibile connettersi all'URL di Home Assistant. Si prega di controllare l'URL esterno sotto Configurazione -> Generale",
       "unknown_error": "Errore sconosciuto: {message}"
+    },
+    "services": {
+      "set_boost_mode": {
+        "description": "Abilita la modalità BOOST",
+        "fields": {
+          "boost_time": {
+            "description": "Imposta il periodo di tempo BOOST [30, 60, 90] min",
+            "name": "Tempo BOOST"
+          },
+          "hvac_mode": {
+            "description": "Imposta la modalità HVAC [RISCALDAMENTO/RAFFREDDAMENTO]",
+            "name": "Modalità HVAC"
+          }
+        },
+        "name": "Imposta modalità BOOST"
+      },
+      "set_schedule": {
+        "description": "Imposta la programmazione",
+        "fields": {
+          "schedule_name": {
+            "description": "Nome della programmazione",
+            "name": "Nome Programmazione"
+          }
+        },
+        "name": "Imposta programmazione"
+      },
+      "set_temperature_with_end_datetime": {
+        "description": "Imposta la temperatura obiettivo fino alla data di fine specificata",
+        "fields": {
+          "end_datetime": {
+            "description": "Imposta la data di fine",
+            "name": "Data di Fine"
+          },
+          "hvac_mode": {
+            "description": "Imposta la modalità HVAC [RISCALDAMENTO/RAFFREDDAMENTO]",
+            "name": "Modalità HVAC"
+          },
+          "target_temperature": {
+            "description": "Imposta la temperatura obiettivo",
+            "name": "Temperatura Obiettivo"
+          }
+        },
+        "name": "Imposta temperatura con data di fine"
+      },
+      "set_temperature_with_time_period": {
+        "description": "Imposta la temperatura obiettivo per il periodo di tempo specificato",
+        "fields": {
+          "hvac_mode": {
+            "description": "Imposta la modalità HVAC [RISCALDAMENTO/RAFFREDDAMENTO]",
+            "name": "Modalità HVAC"
+          },
+          "target_temperature": {
+            "description": "Imposta la temperatura obiettivo",
+            "name": "Temperatura Obiettivo"
+          },
+          "time_period": {
+            "description": "Imposta il periodo di tempo",
+            "name": "Periodo di Tempo"
+          }
+        },
+        "name": "Imposta temperatura con periodo di tempo"
+      },
+      "set_turn_off_with_end_datetime": {
+        "description": "Spegni il termostato fino alla data di fine specificata",
+        "fields": {
+          "end_datetime": {
+            "description": "Imposta la data di fine",
+            "name": "Data di Fine"
+          }
+        },
+        "name": "Spegni termostato con data di fine"
+      },
+      "set_turn_off_with_time_period": {
+        "description": "Spegni il termostato per il periodo di tempo specificato",
+        "fields": {
+          "time_period": {
+            "description": "Imposta il periodo di tempo",
+            "name": "Periodo di Tempo"
+          }
+        },
+        "name": "Spegni termostato con periodo di tempo"
+      }
     },
     "step": {
       "get_authorize_code": {
         "data": {
           "browser_url": "Incolla qui l'URL del browser"
         },
-        "description": "Fai clic sul link qui sotto per autorizzare Bticino X8000, dopo l'autorizzazione, incolla qui l'URL del browser reindirizzato",
-        "title": "Bticino X8000 - Metodo di autenticazione legacy"
+        "description": "Clicca sul link sottostante per autorizzare Bticino X8000. Dopo l'autorizzazione, incolla qui l'URL di reindirizzamento del browser.",
+        "title": "Bticino X8000 - Metodo di Autenticazione Legacy"
       },
       "select_thermostats": {
         "data": {
@@ -23,20 +105,20 @@
       },
       "url_warning": {
         "data": {
-          "url_warning": "Ignora e continua - Capisco che non viene fornito alcun supporto per i problemi di accesso per bypassare questo avviso."
+          "url_warning": "Ignora e Continua - Capisco che non verrà fornito supporto per problemi di accesso per bypassare questo avviso."
         },
-        "description": "Il server HA non può connettersi all'URL fornito: {hass_url}.\n> {error}\n\nPer risolvere questo problema, conferma che il tuo **server HA** possa raggiungere {hass_url}. Questo campo è nell'URL esterno in Configurazione -> Generale ma puoi provare il tuo URL interno.\n\nSe sei **certo** che il tuo client possa raggiungere questo URL, puoi ignorare questo avviso e utilizzare l'autenticazione legacy.",
-        "title": "Bticino X8000 - Impossibile connettersi all'URL di HA"
+        "description": "Il server HA non riesce a connettersi all'URL fornito: {hass_url}.\n> {error}\n\nPer risolvere questo problema, conferma che il tuo **server HA** riesca a raggiungere {hass_url}. Questo campo è nell'URL Esterno in Configurazione -> Generale, ma puoi provare con l'URL interno.\n\nSe sei **certo** che il tuo client riesca a raggiungere questo URL, puoi ignorare questo avviso e utilizzare l'autenticazione legacy.",
+        "title": "Bticino X8000 - Impossibile Connettersi all'URL di HA"
       },
       "user": {
         "data": {
-          "client_id": "ID client",
-          "client_secret": "Segreto client",
+          "client_id": "ID Client",
+          "client_secret": "Segreto del Client",
           "external_url": "URL per accedere a Home Assistant",
-          "legacy_mode": "Modalità legacy (Utilizza il sito esterno solo per l'autenticazione se il tuo HA non è raggiungibile da internet)",
-          "subscription_key": "Chiave di sottoscrizione"
+          "legacy_mode": "Modalità Legacy (Usa il sito esterno solo per l'autenticazione se il tuo HA non è raggiungibile dall'esterno)",
+          "subscription_key": "Chiave di Sottoscrizione"
         },
-        "description": "Conferma le informazioni seguenti. Per la configurazione legacy, seleziona l'opzione di modalità legacy.",
+        "description": "Conferma le informazioni di seguito. Per la configurazione legacy, seleziona l'opzione modalità legacy.",
         "title": "Bticino X8000 - Configurazione"
       }
     }
