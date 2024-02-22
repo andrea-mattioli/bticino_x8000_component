@@ -21,25 +21,30 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from .api import BticinoX8000Api
+
+# from .input_select import BticinoX8000ProgramInputSelect
 from .const import (
-    ATTR_BOOST_MODE,
     ATTR_END_DATETIME,
+    ATTR_HVAC_MODE,
+    ATTR_SCHEDULE_NAME,
     ATTR_TARGET_TEMPERATURE,
     ATTR_TIME_BOOST_MODE,
     ATTR_TIME_PERIOD,
     DOMAIN,
-    SERVICE_CLEAR_TEMPERATURE_SETTING,
     SERVICE_SET_BOOST_MODE,
+    SERVICE_SET_SCHEDULE,
     SERVICE_SET_TEMPERATURE_WITH_END_DATETIME,
     SERVICE_SET_TEMPERATURE_WITH_TIME_PERIOD,
+    SERVICE_SET_TURN_OFF_WITH_END_DATETIME,
+    SERVICE_SET_TURN_OFF_WITH_TIME_PERIOD,
 )
 
 _LOGGER = logging.getLogger(__name__)
 SUPPORT_FLAGS = ClimateEntityFeature.TARGET_TEMPERATURE
-BOOST_TIME = (30, 60, 90)
+BOOST_TIME = ["30", "60", "90"]
 DEFAULT_MAX_TEMP = 40
 DEFAULT_MIN_TEMP = 7
-BOOST_MODES = ["heating", "cooling"]
+HVAC_MODES = ["heating", "cooling"]
 PRECISION_HALVES = 0.1
 
 
@@ -230,13 +235,19 @@ class BticinoX8000ClimateEntity(ClimateEntity):  # type:ignore
             )[0]
             self._function = chronothermostat_data.get("function")
             self._mode = chronothermostat_data.get("mode")
+            self._load_state = chronothermostat_data.get("loadState")
             self._program_number = chronothermostat_data.get("programs", [])
             self._program = self._get_program_name(self._program_number)
             if "activationTime" in chronothermostat_data:
                 self._activation_time = chronothermostat_data.get("activationTime")
                 self._update_attrs(
                     {
-                        "programs": self._program,
+                        "mode": self._mode.lower(),
+                        "status": self._load_state.lower(),
+                        "current_program": self._program,
+                        "available_programs": [
+                            option["name"] for option in self._programs_name
+                        ],
                         self._mode.lower()
                         + "_time_remainig": self.calculate_remaining_time(
                             self._activation_time
@@ -246,10 +257,14 @@ class BticinoX8000ClimateEntity(ClimateEntity):  # type:ignore
             else:
                 self._update_attrs(
                     {
-                        "programs": self._program,
+                        "mode": self._mode.lower(),
+                        "status": self._load_state.lower(),
+                        "current_program": self._program,
+                        "available_programs": [
+                            option["name"] for option in self._programs_name
+                        ],
                     }
                 )
-            self._load_state = chronothermostat_data.get("loadState")
             self._set_point = float(set_point.get("value"))
             self._temperature = float(thermometer_data.get("value"))
             self._humidity = float(hygrometer_data.get("value"))
@@ -295,29 +310,57 @@ class BticinoX8000ClimateEntity(ClimateEntity):  # type:ignore
             )
 
     async def async_therm_manual(
-        self, target_temperature: str, end_timestamp: int
+        self, hvac_modes: str, target_temperature: str | None, end_timestamp: str
     ) -> None:
         """Set manual."""
-        _LOGGER.debug(target_temperature, end_timestamp)
+        _LOGGER.debug(hvac_modes, target_temperature, end_timestamp)
+        now_timestamp = dt_util.now().strftime("%Y-%m-%dT%H:%M:%S")
+        if target_temperature is not None:
+            payload = {
+                "function": hvac_modes,
+                "mode": "manual",
+                "activationTime": now_timestamp + "/" + end_timestamp,
+                "setPoint": {
+                    "value": target_temperature,
+                    "unit": self.temperature_unit,
+                },
+            }
+        else:
+            payload = {
+                "function": self._function,
+                "mode": hvac_modes,
+                "activationTime": now_timestamp + "/" + end_timestamp,
+            }
+        response = await self._bticino_api.set_chronothermostat_status(
+            self._plant_id,
+            self._topology_id,
+            payload,
+        )
+        if response["status_code"] != 200:
+            _LOGGER.error(
+                "Error setting temperature for %s. Status code: %s",
+                self._name,
+                response,
+            )
 
     async def _async_service_set_temperature_with_end_datetime(
         self, **kwargs: Any
     ) -> None:
-        target_temperature: str = kwargs[ATTR_TARGET_TEMPERATURE]
+        hvac_mode = kwargs[ATTR_HVAC_MODE]
+        target_temperature = kwargs[ATTR_TARGET_TEMPERATURE]
         end_datetime = kwargs[ATTR_END_DATETIME]
-        end_timestamp = int(dt_util.as_timestamp(end_datetime))
-
+        end_timestamp = end_datetime.strftime("%Y-%m-%dT%H:%M:%S")
         _LOGGER.debug(
             "Setting %s to target temperature %s with end datetime %s",
             self.entity_id,
             target_temperature,
             end_timestamp,
         )
-        await self.async_therm_manual(target_temperature, end_timestamp)
+        await self.async_therm_manual(hvac_mode, target_temperature, end_timestamp)
 
     async def _async_service_set_boost_mode(self, **kwargs: Any) -> None:
-        boost_mode = kwargs[ATTR_BOOST_MODE]
-        if boost_mode == "cooling":
+        hvac_mode = kwargs[ATTR_HVAC_MODE]
+        if hvac_mode == "cooling":
             set_pont = DEFAULT_MIN_TEMP
         else:
             set_pont = DEFAULT_MAX_TEMP
@@ -331,21 +374,21 @@ class BticinoX8000ClimateEntity(ClimateEntity):  # type:ignore
 
         if int(boost_time) == 30:
             payload = {
-                "function": boost_mode,
+                "function": hvac_mode,
                 "mode": "boost",
                 "activationTime": now_timestamp + "/" + boost_30,
                 "setPoint": {"value": set_pont, "unit": self.temperature_unit},
             }
         elif int(boost_time) == 60:
             payload = {
-                "function": boost_mode,
+                "function": hvac_mode,
                 "mode": "boost",
                 "activationTime": now_timestamp + "/" + boost_60,
                 "setPoint": {"value": set_pont, "unit": self.temperature_unit},
             }
         elif int(boost_time) == 90:
             payload = {
-                "function": boost_mode,
+                "function": hvac_mode,
                 "mode": "boost",
                 "activationTime": now_timestamp + "/" + boost_90,
                 "setPoint": {"value": set_pont, "unit": self.temperature_unit},
@@ -364,24 +407,68 @@ class BticinoX8000ClimateEntity(ClimateEntity):  # type:ignore
     async def _async_service_set_temperature_with_time_period(
         self, **kwargs: Any
     ) -> None:
+        hvac_mode = kwargs[ATTR_HVAC_MODE]
         target_temperature = kwargs[ATTR_TARGET_TEMPERATURE]
         time_period = kwargs[ATTR_TIME_PERIOD]
 
-        _LOGGER.debug(
+        _LOGGER.info(
             "Setting %s to target temperature %s with time period %s",
             self.entity_id,
             target_temperature,
             time_period,
         )
+        end_timestamp = (
+            dt_util.now() + timedelta(seconds=time_period.seconds)
+        ).strftime("%Y-%m-%dT%H:%M:%S")
+        await self.async_therm_manual(hvac_mode, target_temperature, end_timestamp)
 
-        now_timestamp = dt_util.as_timestamp(dt_util.utcnow())
-        end_timestamp = int(now_timestamp + time_period.seconds)
-        await self.async_therm_manual(target_temperature, end_timestamp)
+    async def _async_service_set_turn_off_with_time_period(self, **kwargs: Any) -> None:
+        time_period = kwargs[ATTR_TIME_PERIOD]
 
-    async def _async_service_clear_temperature_setting(self, **kwargs: Any) -> None:
-        _LOGGER.debug("Clearing %s temperature setting", self.entity_id)
-        kwargs.get(ATTR_TEMPERATURE)
-        await self.async_therm_manual("None", 0)
+        _LOGGER.info(
+            "Turn off thermostat %s with time period %s",
+            self.entity_id,
+            time_period,
+        )
+        end_timestamp = (
+            dt_util.now() + timedelta(seconds=time_period.seconds)
+        ).strftime("%Y-%m-%dT%H:%M:%S")
+        await self.async_therm_manual("off", None, end_timestamp)
+
+    async def _async_service_set_turn_off_with_end_datetime(
+        self, **kwargs: Any
+    ) -> None:
+        end_datetime = kwargs[ATTR_END_DATETIME]
+        end_timestamp = end_datetime.strftime("%Y-%m-%dT%H:%M:%S")
+        _LOGGER.debug(
+            "Turn off thermostat %s with end datetime %s",
+            self.entity_id,
+            end_timestamp,
+        )
+        await self.async_therm_manual("off", None, end_timestamp)
+
+    async def _async_service_set_schedule(self, **kwargs: Any) -> None:
+        selected_schedule = kwargs[ATTR_SCHEDULE_NAME]
+        _LOGGER.debug(
+            "Set program schedule %s on %s", selected_schedule, self.entity_id
+        )
+        self._get_program_number(selected_schedule)
+        payload = {
+            "function": self._function,
+            "mode": "automatic",
+            "setPoint": {"value": self._set_point, "unit": self.temperature_unit},
+            "programs": [{"number": self._get_program_number(selected_schedule)}],
+        }
+        response = await self._bticino_api.set_chronothermostat_status(
+            self._plant_id, self._topology_id, payload
+        )
+        if response["status_code"] != 200:
+            _LOGGER.error(
+                "Error setting %s program %s: ERROR = %s",
+                self._name,
+                selected_schedule,
+                response,
+            )
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set new target temperature."""
@@ -453,13 +540,19 @@ class BticinoX8000ClimateEntity(ClimateEntity):  # type:ignore
             chronothermostat_data = response["data"]["chronothermostats"][0]
             self._function = chronothermostat_data["function"]
             self._mode = chronothermostat_data["mode"]
+            self._load_state = chronothermostat_data["loadState"]
             self._program_number = chronothermostat_data["programs"]
             self._program = self._get_program_name(self._program_number)
             if "activationTime" in chronothermostat_data:
                 self._activation_time = chronothermostat_data.get("activationTime")
                 self._update_attrs(
                     {
-                        "programs": self._program,
+                        "mode": self._mode.lower(),
+                        "status": self._load_state.lower(),
+                        "current_program": self._program,
+                        "available_programs": [
+                            option["name"] for option in self._programs_name
+                        ],
                         self._mode.lower()
                         + "_time_remainig": self.calculate_remaining_time(
                             self._activation_time
@@ -469,10 +562,14 @@ class BticinoX8000ClimateEntity(ClimateEntity):  # type:ignore
             else:
                 self._update_attrs(
                     {
-                        "programs": self._program,
+                        "mode": self._mode.lower(),
+                        "status": self._load_state.lower(),
+                        "current_program": self._program,
+                        "available_programs": [
+                            option["name"] for option in self._programs_name
+                        ],
                     }
                 )
-            self._load_state = chronothermostat_data["loadState"]
             set_point_data = chronothermostat_data["setPoint"]
             self._set_point = float(set_point_data["value"])
             thermometer_data = chronothermostat_data["thermometer"]["measures"][0]
@@ -518,12 +615,17 @@ async def async_setup_entry(
             f"{DOMAIN}_webhook_update",
             my_entity.handle_webhook_update,
         )
+
+        # WIP
+        # program_input_select = BticinoX8000ProgramInputSelect(hass, my_entity)
+        # await program_input_select.async_create_input_select()
+
     platform = entity_platform.async_get_current_platform()
 
     platform.async_register_entity_service(
         SERVICE_SET_BOOST_MODE,
         {
-            vol.Required(ATTR_BOOST_MODE): vol.In(BOOST_MODES),
+            vol.Required(ATTR_HVAC_MODE): vol.In(HVAC_MODES),
             vol.Required(ATTR_TIME_BOOST_MODE): vol.In(BOOST_TIME),
         },
         "_async_service_set_boost_mode",
@@ -531,6 +633,7 @@ async def async_setup_entry(
     platform.async_register_entity_service(
         SERVICE_SET_TEMPERATURE_WITH_END_DATETIME,
         {
+            vol.Required(ATTR_HVAC_MODE): vol.In(HVAC_MODES),
             vol.Required(ATTR_TARGET_TEMPERATURE): vol.All(
                 vol.Coerce(float), vol.Range(min=DEFAULT_MIN_TEMP, max=DEFAULT_MAX_TEMP)
             ),
@@ -541,6 +644,7 @@ async def async_setup_entry(
     platform.async_register_entity_service(
         SERVICE_SET_TEMPERATURE_WITH_TIME_PERIOD,
         {
+            vol.Required(ATTR_HVAC_MODE): vol.In(HVAC_MODES),
             vol.Required(ATTR_TARGET_TEMPERATURE): vol.All(
                 vol.Coerce(float), vol.Range(min=DEFAULT_MIN_TEMP, max=DEFAULT_MAX_TEMP)
             ),
@@ -552,7 +656,26 @@ async def async_setup_entry(
         "_async_service_set_temperature_with_time_period",
     )
     platform.async_register_entity_service(
-        SERVICE_CLEAR_TEMPERATURE_SETTING,
-        {},
-        "_async_service_clear_temperature_setting",
+        SERVICE_SET_TURN_OFF_WITH_TIME_PERIOD,
+        {
+            vol.Required(ATTR_TIME_PERIOD): vol.All(
+                cv.time_period,
+                cv.positive_timedelta,
+            ),
+        },
+        "_async_service_set_turn_off_with_time_period",
+    )
+
+    platform.async_register_entity_service(
+        SERVICE_SET_TURN_OFF_WITH_END_DATETIME,
+        {
+            vol.Required(ATTR_END_DATETIME): cv.datetime,
+        },
+        "_async_service_set_turn_off_with_end_datetime",
+    )
+
+    platform.async_register_entity_service(
+        SERVICE_SET_SCHEDULE,
+        {vol.Required(ATTR_SCHEDULE_NAME): cv.string},
+        "_async_service_set_schedule",
     )

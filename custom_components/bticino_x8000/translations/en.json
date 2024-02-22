@@ -1,1 +1,126 @@
-{}
+{
+  "config": {
+    "error": {
+      "invalid_credentials": "Invalid credentials",
+      "invalid_url": "URL is invalid: {message}",
+      "unable_to_connect_hass_url": "Unable to connect to Home Assistant URL. Please check the External URL under Configuration -> General",
+      "unknown_error": "Unknown error: {message}"
+    },
+    "step": {
+      "get_authorize_code": {
+        "data": {
+          "browser_url": "Paste here the browser URL"
+        },
+        "description": "Click the link below to authorize Bticino X8000. After authorization, paste the redirect browser URL here.",
+        "title": "Bticino X8000 - Legacy Auth Method"
+      },
+      "select_thermostats": {
+        "data": {
+          "select_thermostats": "Select the thermostats to add"
+        },
+        "description": "Select the thermostats to add",
+        "title": "Bticino X8000 - Thermostats"
+      },
+      "url_warning": {
+        "data": {
+          "url_warning": "Ignore and Continue - I understand that no support for login issues is provided for bypassing this warning."
+        },
+        "description": "The HA server cannot connect to the provided URL: {hass_url}.\n> {error}\n\nTo fix this, please confirm your **HA server** can reach {hass_url}. This field is from the External URL under Configuration -> General, but you can try your internal URL.\n\nIf you are **certain** your client can reach this URL, you can bypass this warning and use legacy auth.",
+        "title": "Bticino X8000 - Unable to Connect to HA URL"
+      },
+      "user": {
+        "data": {
+          "client_id": "Client Id",
+          "client_secret": "Client Secret",
+          "external_url": "URL to access Home Assistant",
+          "legacy_mode": "Legacy Mode (Use external site for auth only if your HA is not reachable from the internet)",
+          "subscription_key": "Subscription Key"
+        },
+        "description": "Please confirm the information below. For legacy configuration, flag the legacy mode option.",
+        "title": "Bticino X8000 - Configuration"
+      }
+    }
+  },
+  "services": {
+    "set_boost_mode": {
+      "description": "Enable BOOST mode",
+      "fields": {
+        "boost_time": {
+          "description": "Set the BOOST time period [30,60,90] min",
+          "name": "BOOST Time"
+        },
+        "hvac_mode": {
+          "description": "Set HVAC mode [HEATING/COOLING]",
+          "name": "HVAC mode"
+        }
+      },
+      "name": "Set BOOST mode"
+    },
+    "set_schedule": {
+      "description": "Set the schedule",
+      "fields": {
+        "schedule_name": {
+          "description": "Schedule name",
+          "name": "Schedule Name"
+        }
+      },
+      "name": "Set schedule"
+    },
+    "set_temperature_with_end_datetime": {
+      "description": "Set the target temperature until the end date specified",
+      "fields": {
+        "end_datetime": {
+          "description": "Set the end date",
+          "name": "End Datetime"
+        },
+        "hvac_mode": {
+          "description": "Set HVAC mode [HEATING/COOLING]",
+          "name": "HVAC mode"
+        },
+        "target_temperature": {
+          "description": "Set the target temperature",
+          "name": "Target temperature"
+        }
+      },
+      "name": "Set temperature with end datetime"
+    },
+    "set_temperature_with_time_period": {
+      "description": "Set the target temperature for the specified time period",
+      "fields": {
+        "hvac_mode": {
+          "description": "Set HVAC mode [HEATING/COOLING]",
+          "name": "HVAC mode"
+        },
+        "target_temperature": {
+          "description": "Set the target temperature",
+          "name": "Target Temperature"
+        },
+        "time_period": {
+          "description": "Set time period",
+          "name": "Time Period"
+        }
+      },
+      "name": "Set temperature with time period"
+    },
+    "set_turn_off_with_end_datetime": {
+      "description": "Turn OFF thermostat until the end date specified",
+      "fields": {
+        "end_datetime": {
+          "description": "Set the end date",
+          "name": "End Datetime"
+        }
+      },
+      "name": "Turn OFF thermostat with end datetime"
+    },
+    "set_turn_off_with_time_period": {
+      "description": "Turn OFF thermostat for the specified time period",
+      "fields": {
+        "time_period": {
+          "description": "Set time period",
+          "name": "Time Period"
+        }
+      },
+      "name": "Turn OFF thermostat with time period"
+    }
+  }
+}
