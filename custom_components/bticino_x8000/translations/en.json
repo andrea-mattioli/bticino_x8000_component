@@ -1,1 +1,44 @@
-{}
+{
+  "config": {
+    "error": {
+      "invalid_credentials": "Invalid credentials",
+      "invalid_url": "URL is invalid: {message}",
+      "unable_to_connect_hass_url": "Unable to connect to Home Assistant url. Please check the External Url under Configuration -> General",
+      "unknown_error": "Unknown error: {message}"
+    },
+    "step": {
+      "get_authorize_code": {
+        "data": {
+          "browser_url": "Paste here the browser URL"
+        },
+        "description": "Click the link below to authorize Bticino X8000, after authorization, paste the redirect browser URL here",
+        "title": "Bticino X8000 - Legacy Auth Method"
+      },
+      "select_thermostats": {
+        "data": {
+          "select_thermostats": "Select the thermostats to add"
+        },
+        "description": "Select the thermostats to add",
+        "title": "Bticino X8000 - Thermostats"
+      },
+      "url_warning": {
+        "data": {
+          "url_warning": "Ignore and Continue - I understand that no support for login issues are provided for bypassing this warning."
+        },
+        "description": "The HA server cannot connect to the URL provided: {hass_url}.\n> {error}\n\nTo fix this, please confirm your **HA server** can reach {hass_url}. This field is from the External Url under Configuration -> General but you can try your internal url.\n\nIf you are **certain** your client can reach this url, you can bypass this warning and do the legacy auth.",
+        "title": "Bticino X8000 - Unable to Connect to HA URL"
+      },
+      "user": {
+        "data": {
+          "client_id": "Client Id",
+          "client_secret": "Client Secret",
+          "external_url": "Url to access Home Assistant",
+          "legacy_mode": "Legacy Mode (Use external site for auth only if your HA is not reachble from internet)",
+          "subscription_key": "Subscription Key"
+        },
+        "description": "Please confirm the information below. For legacy configuration, flag legacy mode option.",
+        "title": "Bticino X8000 - Configuration"
+      }
+    }
+  }
+}

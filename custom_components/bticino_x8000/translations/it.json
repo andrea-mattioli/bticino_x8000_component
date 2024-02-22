@@ -1,1 +1,44 @@
-{}
+{
+  "config": {
+    "error": {
+      "invalid_credentials": "Credenziali non valide",
+      "invalid_url": "L'URL non è valido: {message}",
+      "unable_to_connect_hass_url": "Impossibile connettersi all'URL di Home Assistant. Controlla l'URL esterno in Configurazione -> Generale",
+      "unknown_error": "Errore sconosciuto: {message}"
+    },
+    "step": {
+      "get_authorize_code": {
+        "data": {
+          "browser_url": "Incolla qui l'URL del browser"
+        },
+        "description": "Fai clic sul link qui sotto per autorizzare Bticino X8000, dopo l'autorizzazione, incolla qui l'URL del browser reindirizzato",
+        "title": "Bticino X8000 - Metodo di autenticazione legacy"
+      },
+      "select_thermostats": {
+        "data": {
+          "select_thermostats": "Seleziona i termostati da aggiungere"
+        },
+        "description": "Seleziona i termostati da aggiungere",
+        "title": "Bticino X8000 - Termostati"
+      },
+      "url_warning": {
+        "data": {
+          "url_warning": "Ignora e continua - Capisco che non viene fornito alcun supporto per i problemi di accesso per bypassare questo avviso."
+        },
+        "description": "Il server HA non può connettersi all'URL fornito: {hass_url}.\n> {error}\n\nPer risolvere questo problema, conferma che il tuo **server HA** possa raggiungere {hass_url}. Questo campo è nell'URL esterno in Configurazione -> Generale ma puoi provare il tuo URL interno.\n\nSe sei **certo** che il tuo client possa raggiungere questo URL, puoi ignorare questo avviso e utilizzare l'autenticazione legacy.",
+        "title": "Bticino X8000 - Impossibile connettersi all'URL di HA"
+      },
+      "user": {
+        "data": {
+          "client_id": "ID client",
+          "client_secret": "Segreto client",
+          "external_url": "URL per accedere a Home Assistant",
+          "legacy_mode": "Modalità legacy (Utilizza il sito esterno solo per l'autenticazione se il tuo HA non è raggiungibile da internet)",
+          "subscription_key": "Chiave di sottoscrizione"
+        },
+        "description": "Conferma le informazioni seguenti. Per la configurazione legacy, seleziona l'opzione di modalità legacy.",
+        "title": "Bticino X8000 - Configurazione"
+      }
+    }
+  }
+}

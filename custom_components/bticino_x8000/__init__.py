@@ -11,6 +11,7 @@ from homeassistant.util import dt as dt_util
 
 from .api import BticinoX8000Api
 from .auth import refresh_access_token
+from .const import DOMAIN
 from .webhook import BticinoX8000WebhookHandler
 
 PLATFORMS = [Platform.CLIMATE]
@@ -25,6 +26,7 @@ async def async_setup_entry(
     """Set up the Bticino_X8000 component."""
     data = dict(config_entry.data)
     bticino_api = BticinoX8000Api(data)
+    hass.data.setdefault(DOMAIN, {})
 
     async def add_c2c_subscription(plant_id: str, webhook_id: str) -> str | None:
         """Subscribe C2C."""
@@ -70,7 +72,6 @@ async def async_setup_entry(
     hass.async_add_job(
         hass.config_entries.async_forward_entry_setup(config_entry, "climate")
     )
-
     return True
 
 
