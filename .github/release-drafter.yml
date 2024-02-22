@@ -47,5 +47,8 @@ version-resolver:
   default: patch
 
 template: |
+  [![Downloads for this release](https://img.shields.io/github/downloads/andrea-mattioli/bticino_x8000_component/$RESOLVED_VERSION/total.svg)](https://github.com/andrea-mattioli/bticino_x8000_component/releases/$RESOLVED_VERSION)
+  $CHANGES
+  
   **🍻 Like my work and want to support me? 🍻**
   <a href="http://paypal.me/mattiols" target="_blank"><img src="https://www.paypalobjects.com/webstatic/mktg/logo/pp_cc_mark_37x23.jpg"></a>
