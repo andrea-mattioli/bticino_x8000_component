@@ -41,7 +41,7 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 SUPPORT_FLAGS = ClimateEntityFeature.TARGET_TEMPERATURE
-BOOST_TIME = (30, 60, 90)
+BOOST_TIME = ["30", "60", "90"]
 DEFAULT_MAX_TEMP = 40
 DEFAULT_MIN_TEMP = 7
 HVAC_MODES = ["heating", "cooling"]

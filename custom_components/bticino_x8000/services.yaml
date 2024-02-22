@@ -133,9 +133,9 @@ set_boost_mode:
       selector:
         select:
           options:
-            - 30
-            - 60
-            - 90
+            - "30"
+            - "60"
+            - "90"
 
 set_schedule:
   target:
