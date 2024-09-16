@@ -12,6 +12,7 @@ body:
     attributes:
       label: Checks
       options:
+        - label: I checked Legrand API works properly [c2c](https://portal.developer.legrand.com/reference#api=smartherV2&operation=Get-subscriptions-to-C2C-notifications) and [Plants](https://portal.developer.legrand.com/reference#api=smartherV2&operation=Plants)
         - label: I have searched the existing issues and no issue is describing my issue
           required: true
         - label: I have checked the [documentation](https://github.com/andrea-mattioli/bticino_x8000_component/blob/main/README.md)
