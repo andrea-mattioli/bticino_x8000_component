@@ -56,7 +56,7 @@ async def async_setup_entry(
 
     update_interval = timedelta(minutes=60)
     async_track_time_interval(hass, update_token, update_interval)
-    hass.async_add_job(update_token(None))
+    hass.async_create_task(update_token(None))
     await update_token(None)
     for plant_data in data["selected_thermostats"]:
         plant_id = list(plant_data.keys())[0]
@@ -69,7 +69,7 @@ async def async_setup_entry(
         await webhook_handler.async_register_webhook()
     hass.config_entries.async_update_entry(config_entry, data=data)
     _LOGGER.debug("selected_thermostats: %s", data["selected_thermostats"])
-    hass.async_add_job(
+    hass.async_create_task(
         hass.config_entries.async_forward_entry_setup(config_entry, "climate")
     )
     return True
