@@ -1,126 +1,126 @@
 {
   "config": {
     "error": {
-      "invalid_credentials": "Invalid credentials",
-      "invalid_url": "URL is invalid: {message}",
-      "unable_to_connect_hass_url": "Unable to connect to Home Assistant URL. Please check the External URL under Configuration -> General",
-      "unknown_error": "Unknown error: {message}"
+      "invalid_credentials": "Credenciais inválidas",
+      "invalid_url": "O URL é inválido: {message}",
+      "unable_to_connect_hass_url": "Não foi possível ligar ao URL do Home Assistant. Por favor, verifique o URL Externo em Configuração -> Geral",
+      "unknown_error": "Erro desconhecido: {message}"
     },
     "step": {
       "get_authorize_code": {
         "data": {
-          "browser_url": "Paste here the browser URL"
+          "browser_url": "Cole aqui o URL do navegador"
         },
-        "description": "Click the link below to authorize Bticino X8000. After authorization, paste the redirect browser URL here.",
-        "title": "Bticino X8000 - Legacy Auth Method"
+        "description": "Clique no link abaixo para autorizar o Bticino X8000. Após a autorização, cole o URL de redirecionamento do navegador aqui.",
+        "title": "Bticino X8000 - Método de Autenticação Legado"
       },
       "select_thermostats": {
         "data": {
-          "select_thermostats": "Select the thermostats to add"
+          "select_thermostats": "Selecione os termostatos a adicionar"
         },
-        "description": "Select the thermostats to add",
-        "title": "Bticino X8000 - Thermostats"
+        "description": "Selecione os termostatos a adicionar",
+        "title": "Bticino X8000 - Termostatos"
       },
       "url_warning": {
         "data": {
-          "url_warning": "Ignore and Continue - I understand that no support for login issues is provided for bypassing this warning."
+          "url_warning": "Ignorar e Continuar - Entendo que não será fornecido suporte para problemas de login ao ignorar este aviso."
         },
-        "description": "The HA server cannot connect to the provided URL: {hass_url}.\n> {error}\n\nTo fix this, please confirm your **HA server** can reach {hass_url}. This field is from the External URL under Configuration -> General, but you can try your internal URL.\n\nIf you are **certain** your client can reach this URL, you can bypass this warning and use legacy auth.",
-        "title": "Bticino X8000 - Unable to Connect to HA URL"
+        "description": "O servidor HA não consegue ligar-se ao URL fornecido: {hass_url}.\n> {error}\n\nPara resolver isto, confirme que o **servidor HA** consegue aceder ao {hass_url}. Este campo vem do URL Externo em Configuração -> Geral, mas pode tentar o seu URL interno.\n\nSe tiver **certeza** de que o cliente consegue aceder a este URL, pode ignorar este aviso e usar a autenticação legada.",
+        "title": "Bticino X8000 - Não foi possível Ligar ao URL do HA"
       },
       "user": {
         "data": {
-          "client_id": "Client Id",
-          "client_secret": "Client Secret",
-          "external_url": "URL to access Home Assistant",
-          "legacy_mode": "Legacy Mode (Use external site for auth only if your HA is not reachable from the internet)",
-          "subscription_key": "Subscription Key"
+          "client_id": "ID do Cliente",
+          "client_secret": "Segredo do Cliente",
+          "external_url": "URL para aceder ao Home Assistant",
+          "legacy_mode": "Modo Legado (Utilize o site externo para autenticação apenas se o seu HA não for acessível pela internet)",
+          "subscription_key": "Chave de Subscrição"
         },
-        "description": "Please confirm the information below. For legacy configuration, flag the legacy mode option.",
-        "title": "Bticino X8000 - Configuration"
+        "description": "Confirme as informações abaixo. Para configuração legada, marque a opção de modo legado.",
+        "title": "Bticino X8000 - Configuração"
       }
     }
   },
   "services": {
     "set_boost_mode": {
-      "description": "Enable BOOST mode",
+      "description": "Ativar o modo BOOST",
       "fields": {
         "boost_time": {
-          "description": "Set the BOOST time period [30,60,90] min",
-          "name": "BOOST Time"
+          "description": "Defina o período de tempo BOOST [30,60,90] min",
+          "name": "Tempo BOOST"
         },
         "hvac_mode": {
-          "description": "Set HVAC mode [HEATING/COOLING]",
-          "name": "HVAC mode"
+          "description": "Defina o modo HVAC [AQUECIMENTO/ARREFECIMENTO]",
+          "name": "Modo HVAC"
         }
       },
-      "name": "Set BOOST mode"
+      "name": "Definir modo BOOST"
     },
     "set_schedule": {
-      "description": "Set the schedule",
+      "description": "Definir o horário",
       "fields": {
         "schedule_name": {
-          "description": "Schedule name",
-          "name": "Schedule Name"
+          "description": "Nome do horário",
+          "name": "Nome do Horário"
         }
       },
-      "name": "Set schedule"
+      "name": "Definir horário"
     },
     "set_temperature_with_end_datetime": {
-      "description": "Set the target temperature until the end date specified",
+      "description": "Defina a temperatura alvo até à data de término especificada",
       "fields": {
         "end_datetime": {
-          "description": "Set the end date",
-          "name": "End Datetime"
+          "description": "Defina a data de término",
+          "name": "Data de Término"
         },
         "hvac_mode": {
-          "description": "Set HVAC mode [HEATING/COOLING]",
-          "name": "HVAC mode"
+          "description": "Defina o modo HVAC [AQUECIMENTO/ARREFECIMENTO]",
+          "name": "Modo HVAC"
         },
         "target_temperature": {
-          "description": "Set the target temperature",
-          "name": "Target temperature"
+          "description": "Defina a temperatura alvo",
+          "name": "Temperatura Alvo"
         }
       },
-      "name": "Set temperature with end datetime"
+      "name": "Definir temperatura com data de término"
     },
     "set_temperature_with_time_period": {
-      "description": "Set the target temperature for the specified time period",
+      "description": "Defina a temperatura alvo para o período de tempo especificado",
       "fields": {
         "hvac_mode": {
-          "description": "Set HVAC mode [HEATING/COOLING]",
-          "name": "HVAC mode"
+          "description": "Defina o modo HVAC [AQUECIMENTO/ARREFECIMENTO]",
+          "name": "Modo HVAC"
         },
         "target_temperature": {
-          "description": "Set the target temperature",
-          "name": "Target Temperature"
+          "description": "Defina a temperatura alvo",
+          "name": "Temperatura Alvo"
         },
         "time_period": {
-          "description": "Set time period",
-          "name": "Time Period"
+          "description": "Defina o período de tempo",
+          "name": "Período de Tempo"
         }
       },
-      "name": "Set temperature with time period"
+      "name": "Definir temperatura com período de tempo"
     },
     "set_turn_off_with_end_datetime": {
-      "description": "Turn OFF thermostat until the end date specified",
+      "description": "Desligar o termóstato até à data de término especificada",
       "fields": {
         "end_datetime": {
-          "description": "Set the end date",
-          "name": "End Datetime"
+          "description": "Defina a data de término",
+          "name": "Data de Término"
         }
       },
-      "name": "Turn OFF thermostat with end datetime"
+      "name": "Desligar termóstato com data de término"
     },
     "set_turn_off_with_time_period": {
-      "description": "Turn OFF thermostat for the specified time period",
+      "description": "Desligar o termóstato pelo período de tempo especificado",
       "fields": {
         "time_period": {
-          "description": "Set time period",
-          "name": "Time Period"
+          "description": "Defina o período de tempo",
+          "name": "Período de Tempo"
         }
       },
-      "name": "Turn OFF thermostat with time period"
+      "name": "Desligar termóstato com período de tempo"
     }
   }
 }
