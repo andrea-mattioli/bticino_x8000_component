@@ -56,7 +56,7 @@ class BticinoX8000Api:
                         )
                         return True
                     if status_code == 401:
-                        _LOGGER.warning(
+                        _LOGGER.debug(
                             "Attempt to update token. HTTP %s, Content: %s, data: %s",
                             status_code,
                             content,
@@ -80,7 +80,7 @@ class BticinoX8000Api:
         status_code = response.status
 
         if status_code == 401:
-            _LOGGER.warning("Received 401 Unauthorized error. Attempting token refresh")
+            _LOGGER.debug("Received 401 Unauthorized error. Attempting token refresh")
             (
                 access_token,
                 _,
@@ -187,8 +187,7 @@ class BticinoX8000Api:
                 return {
                     "status_code": 500,
                     "error": (
-                        f"Errore nella richiesta di set_chronothermostat_status: "
-                        f"{e}"
+                        f"Error during set_chronothermostat_status request: " f"{e}"
                     ),
                 }
 
@@ -217,7 +216,7 @@ class BticinoX8000Api:
             except aiohttp.ClientError as e:
                 return {
                     "status_code": 500,
-                    "error": f"Errore nella richiesta di get_chronothermostat_status: {e}",
+                    "error": f"Error during get_chronothermostat_status request: {e}",
                 }
 
     async def get_chronothermostat_measures(
@@ -245,7 +244,7 @@ class BticinoX8000Api:
             except aiohttp.ClientError as e:
                 return {
                     "status_code": 500,
-                    "error": f"Errore nella richiesta di get_chronothermostat_measures: {e}",
+                    "error": f"Error during get_chronothermostat_measures request: {e}",
                 }
 
     async def get_chronothermostat_programlist(
@@ -278,7 +277,7 @@ class BticinoX8000Api:
             except aiohttp.ClientError as e:
                 return {
                     "status_code": 500,
-                    "error": f"Errore nella richiesta di get_chronothermostat_programlist: {e}",
+                    "error": f"Error during get_chronothermostat_programlist request: {e}",
                 }
 
     async def get_subscriptions_c2c_notifications(self) -> dict[str, Any]:
@@ -302,7 +301,7 @@ class BticinoX8000Api:
             except aiohttp.ClientError as e:
                 return {
                     "status_code": 500,
-                    "error": f"Errore nella richiesta di get_subscriptions_C2C_notifications: {e}",
+                    "error": f"Error during get_subscriptions_C2C_notifications request: {e}",
                 }
 
     async def set_subscribe_c2c_notifications(
@@ -329,7 +328,7 @@ class BticinoX8000Api:
             except aiohttp.ClientError as e:
                 return {
                     "status_code": 500,
-                    "error": f"Errore nella richiesta di set_subscribe_C2C_notifications: {e}",
+                    "error": f"Error during set_subscribe_C2C_notifications request: {e}",
                 }
 
     async def delete_subscribe_c2c_notifications(
@@ -359,5 +358,5 @@ class BticinoX8000Api:
             except aiohttp.ClientError as e:
                 return {
                     "status_code": 500,
-                    "error": f"Errore nella richiesta di delete_subscribe_C2C_notifications: {e}",
+                    "error": f"Error during delete_subscribe_C2C_notifications request: {e}",
                 }

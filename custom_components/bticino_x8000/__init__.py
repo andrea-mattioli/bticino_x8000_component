@@ -49,6 +49,7 @@ async def async_setup_entry(
             refresh_token,
             access_token_expires_on,
         ) = await refresh_access_token(data)
+        _LOGGER.debug("Access_token_expires_on: %s", access_token_expires_on)
         data["access_token"] = access_token
         data["refresh_token"] = refresh_token
         data["access_token_expires_on"] = access_token_expires_on
