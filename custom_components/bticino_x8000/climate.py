@@ -40,7 +40,11 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
-SUPPORT_FLAGS = ClimateEntityFeature.TARGET_TEMPERATURE
+SUPPORT_FLAGS = (
+    ClimateEntityFeature.TARGET_TEMPERATURE
+    | ClimateEntityFeature.TURN_OFF
+    | ClimateEntityFeature.TURN_ON
+)
 BOOST_TIME = ["30", "60", "90"]
 DEFAULT_MAX_TEMP = 40
 DEFAULT_MIN_TEMP = 7
@@ -50,10 +54,11 @@ PRECISION_HALVES = 0.1
 
 # pylint: disable=R0902
 # pylint: disable=W0223
-class BticinoX8000ClimateEntity(ClimateEntity):  # type:ignore
+class BticinoX8000ClimateEntity(ClimateEntity):
     """Bticino X8000 Climate entity."""
 
     _attr_supported_features = SUPPORT_FLAGS
+    _enable_turn_on_off_backwards_compatibility = False
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_target_temperature_step = PRECISION_HALVES
     _attr_hvac_mode = HVACMode.AUTO
@@ -73,11 +78,11 @@ class BticinoX8000ClimateEntity(ClimateEntity):  # type:ignore
             HVACMode.COOL,
             HVACMode.OFF,
         ]
-        self._attr_hvac_action = [
-            HVACAction.HEATING,
-            HVACAction.COOLING,
-            HVACAction.OFF,
-        ]
+        #        self._attr_hvac_action = [
+        #            HVACAction.HEATING,
+        #            HVACAction.COOLING,
+        #            HVACAction.OFF,
+        #        ]
         self._bticino_api = BticinoX8000Api(data)
         self._plant_id: str = config["plant_id"]
         self._topology_id: str = config["topology_id"]
@@ -193,15 +198,23 @@ class BticinoX8000ClimateEntity(ClimateEntity):  # type:ignore
                 return HVACAction.OFF
         return None
 
+    async def async_turn_off(self) -> None:
+        """Set thermostat to off."""
+        await self.async_set_hvac_mode(HVACMode.OFF)
+
+    async def async_turn_on(self) -> None:
+        """Set thermostat to on."""
+        await self.async_set_hvac_mode(HVACMode.AUTO)
+
     # pylint: disable=W0239
     @property
-    def state_attributes(self) -> dict[str, Any]:
-        """Return the list of custom attributes."""
-        attrs = super().state_attributes or {}
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return a dictionary of extra state attributes."""
+        attrs = dict(super().extra_state_attributes or {})
         attrs.update(self._custom_attributes)
         return attrs
 
-    @callback  # type:ignore
+    @callback
     def handle_webhook_update(self, event: dict[str, Any]) -> None:
         """Handle webhook updates."""
         _LOGGER.debug("EVENT: %s", event["data"][0])
@@ -510,25 +523,23 @@ class BticinoX8000ClimateEntity(ClimateEntity):  # type:ignore
 
     def calculate_remaining_time(self, date_string: str) -> dict[str, Any]:
         """Convert string to date object."""
-        date_to_compare_str = dt_util.parse_datetime(date_string).strftime(
-            "%Y-%m-%dT%H:%M:%S"
-        )
-        current_date_str = dt_util.now().strftime("%Y-%m-%dT%H:%M:%S")
-        date_to_compare = dt_util.parse_datetime(date_to_compare_str)
-        current_date = dt_util.parse_datetime(current_date_str)
+        date_to_compare = dt_util.parse_datetime(date_string)
+        if date_to_compare is None:
+            return {}
+        date_to_compare = dt_util.as_utc(date_to_compare)
+        current_date = dt_util.now()
         time_difference = date_to_compare - current_date
         remaining_days = time_difference.days
         remaining_seconds = time_difference.total_seconds()
         remaining_hours, remainder = divmod(remaining_seconds, 3600)
         remaining_minutes, remaining_seconds = divmod(remainder, 60)
 
-        remaining_time = {
+        return {
             "days": remaining_days,
             "hours": remaining_hours,
             "minutes": remaining_minutes,
             "seconds": remaining_seconds,
         }
-        return remaining_time
 
     async def async_sync_manual(self) -> None:
         """Force sync chronothermostat status."""
@@ -591,7 +602,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Add entry."""
-    data = config_entry.data
+    data = dict(config_entry.data)
     for plant_data in data["selected_thermostats"]:
         plant_id = list(plant_data.keys())[0]
         plant_data = list(plant_data.values())[0]
