@@ -14,7 +14,7 @@ _LOGGER = logging.getLogger(__name__)
 
 async def exchange_code_for_tokens(
     client_id: str, client_secret: str, code: str
-) -> tuple[str, str, str]:
+) -> tuple[str, Any, Any]:
     """Get access token."""
     token_url = f"{DEFAULT_AUTH_BASE_URL}{AUTH_REQ_ENDPOINT}"
     payload = {
@@ -24,9 +24,10 @@ async def exchange_code_for_tokens(
         "client_id": client_id,
     }
 
-    async with aiohttp.ClientSession() as session, session.post(
-        token_url, data=payload
-    ) as response:
+    async with (
+        aiohttp.ClientSession() as session,
+        session.post(token_url, data=payload) as response,
+    ):
         token_data = await response.json()
 
     access_token = "Bearer " + str(token_data.get("access_token"))
@@ -38,7 +39,7 @@ async def exchange_code_for_tokens(
     return access_token, refresh_token, access_token_expires_on
 
 
-async def refresh_access_token(data: dict[str, Any]) -> tuple[str, str, str]:
+async def refresh_access_token(data: dict[str, Any]) -> tuple[str, Any, Any]:
     """Refresh access token."""
     token_url = f"{DEFAULT_AUTH_BASE_URL}{AUTH_REQ_ENDPOINT}"
     payload = {
@@ -48,9 +49,10 @@ async def refresh_access_token(data: dict[str, Any]) -> tuple[str, str, str]:
         "client_id": data["client_id"],
     }
 
-    async with aiohttp.ClientSession() as session, session.post(
-        token_url, data=payload
-    ) as response:
+    async with (
+        aiohttp.ClientSession() as session,
+        session.post(token_url, data=payload) as response,
+    ):
         token_data = await response.json()
     access_token = "Bearer " + token_data.get("access_token")
     refresh_token = token_data.get("refresh_token")

@@ -26,7 +26,7 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type:ignore
+class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Bticino ConfigFlow."""
 
     def __init__(self) -> None:
@@ -37,7 +37,7 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type:
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> config_entries.ConfigFlowResult:
         """User configuration."""
         if self.hass.config.external_url is not None:
             external_url = self.hass.config.external_url
@@ -114,7 +114,7 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type:
 
     async def async_step_get_authorize_code(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> config_entries.ConfigFlowResult:
         """Get authorization code."""
         if user_input is not None:
             try:
