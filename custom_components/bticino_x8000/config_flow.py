@@ -1,5 +1,6 @@
 """Config Flow."""
 
+# pylint: disable=W0223
 import logging
 import secrets
 from typing import Any
@@ -8,7 +9,6 @@ from urllib.parse import parse_qs, urlparse
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.components.webhook import async_generate_id as generate_id
-from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import config_validation as cv
 
 from .api import BticinoX8000Api
@@ -44,7 +44,7 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         else:
             external_url = (
                 "My HA external url ex: "
-                "https://pippo.duckdns.com:8123 "
+                "https://example.com:8123 "
                 "(specify the port if is not standard 443)"
             )
 
@@ -223,7 +223,7 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_select_thermostats(
         self, user_input: dict[str, Any]
-    ) -> FlowResult:
+    ) -> config_entries.ConfigFlowResult:
         """User can select one o more thermostat to add."""
         selected_thermostats = [
             {thermo_id: {**thermo_data, "webhook_id": generate_id()}}
