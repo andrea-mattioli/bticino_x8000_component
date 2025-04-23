@@ -37,7 +37,7 @@ class BticinoX8000WebhookHandler:
         _LOGGER.debug("Got webhook with id: %s and data: %s", webhook_id, data)
 
         # Dispatch an event to update climate entities with webhook data
-        async_dispatcher_send(hass, f"{DOMAIN}_webhook_update", {"data": data})
+        async_dispatcher_send(hass, f"{DOMAIN}_webhook_update", {"data": data})  # type: ignore
         return Response(text="OK", status=200)
 
     async def async_register_webhook(self) -> None:
