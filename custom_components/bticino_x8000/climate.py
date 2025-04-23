@@ -621,7 +621,7 @@ async def async_setup_entry(
         if not my_entity.has_data():
             await my_entity.async_sync_manual()
 
-        async_dispatcher_connect(
+        async_dispatcher_connect(  # type: ignore
             hass,
             f"{DOMAIN}_webhook_update",
             my_entity.handle_webhook_update,
