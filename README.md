@@ -80,4 +80,4 @@ Select thermostats to add as Entity (Default ALL)
 ![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/images/end.png?raw=true "Configuration")
 ![Alt text](https://github.com/andrea-mattioli/bticino_x8000_component/blob/images/climate.png?raw=true "Configuration")
 
-Thanks to everyone who will make a donation!
+Thanks to everyone who will make a donation 💰

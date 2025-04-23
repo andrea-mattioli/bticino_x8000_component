@@ -1,5 +1,6 @@
 """Config Flow."""
 
+# pylint: disable=W0223
 import logging
 import secrets
 from typing import Any
@@ -8,7 +9,6 @@ from urllib.parse import parse_qs, urlparse
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.components.webhook import async_generate_id as generate_id
-from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import config_validation as cv
 
 from .api import BticinoX8000Api
@@ -26,7 +26,7 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type:ignore
+class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Bticino ConfigFlow."""
 
     def __init__(self) -> None:
@@ -37,14 +37,14 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type:
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> config_entries.ConfigFlowResult:
         """User configuration."""
         if self.hass.config.external_url is not None:
             external_url = self.hass.config.external_url
         else:
             external_url = (
                 "My HA external url ex: "
-                "https://pippo.duckdns.com:8123 "
+                "https://example.com:8123 "
                 "(specify the port if is not standard 443)"
             )
 
@@ -114,7 +114,7 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type:
 
     async def async_step_get_authorize_code(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> config_entries.ConfigFlowResult:
         """Get authorization code."""
         if user_input is not None:
             try:
@@ -223,7 +223,7 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type:
 
     async def async_step_select_thermostats(
         self, user_input: dict[str, Any]
-    ) -> FlowResult:
+    ) -> config_entries.ConfigFlowResult:
         """User can select one o more thermostat to add."""
         selected_thermostats = [
             {thermo_id: {**thermo_data, "webhook_id": generate_id()}}

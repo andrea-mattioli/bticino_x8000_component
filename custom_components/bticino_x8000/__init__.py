@@ -42,21 +42,22 @@ async def async_setup_entry(
                 return subscription_id
         return None
 
-    async def update_token(now: dt_util.dt.datetime) -> None:
+    async def update_token(now: dt_util.dt.datetime | None) -> None:
         _LOGGER.debug("Refreshing access token: %s", now)
         (
             access_token,
             refresh_token,
             access_token_expires_on,
         ) = await refresh_access_token(data)
+        _LOGGER.debug("Access_token_expires_on: %s", access_token_expires_on)
         data["access_token"] = access_token
         data["refresh_token"] = refresh_token
-        data["access_token_expires_on"] = dt_util.as_utc(access_token_expires_on)
+        data["access_token_expires_on"] = access_token_expires_on
         hass.config_entries.async_update_entry(config_entry, data=data)
 
     update_interval = timedelta(minutes=60)
     async_track_time_interval(hass, update_token, update_interval)
-    hass.async_add_job(update_token(None))
+    hass.async_create_task(update_token(None))
     await update_token(None)
     for plant_data in data["selected_thermostats"]:
         plant_id = list(plant_data.keys())[0]
@@ -69,7 +70,7 @@ async def async_setup_entry(
         await webhook_handler.async_register_webhook()
     hass.config_entries.async_update_entry(config_entry, data=data)
     _LOGGER.debug("selected_thermostats: %s", data["selected_thermostats"])
-    hass.async_add_job(
+    hass.async_create_task(
         hass.config_entries.async_forward_entry_setup(config_entry, "climate")
     )
     return True
@@ -77,7 +78,7 @@ async def async_setup_entry(
 
 async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Unload Entry."""
-    data = config_entry.data
+    data = dict(config_entry.data)
     bticino_api = BticinoX8000Api(data)
     await hass.config_entries.async_unload_platforms(config_entry, PLATFORMS)
     for plant_data in data["selected_thermostats"]:
