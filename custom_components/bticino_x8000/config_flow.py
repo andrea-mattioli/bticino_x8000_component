@@ -1,5 +1,5 @@
 """Config Flow."""
-# mypy: disable-error-code=no-any-return,has-type
+# mypy: disable-error-code=no-any-return
 # pylint: disable=W0223
 import logging
 import secrets
