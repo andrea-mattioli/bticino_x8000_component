@@ -8,7 +8,6 @@ import aiohttp
 
 from .auth import refresh_access_token
 from .const import (
-    AUTH_CHECK_ENDPOINT,
     DEFAULT_API_BASE_URL,
     PLANTS,
     THERMOSTAT_API_ENDPOINT,
@@ -31,49 +30,29 @@ class BticinoX8000Api:
         }
 
     async def check_api_endpoint_health(self) -> bool:
-        """Check API endpoint helth."""
-        url = f"{DEFAULT_API_BASE_URL}{AUTH_CHECK_ENDPOINT}"
-
-        payload = {
-            "key1": "value1",
-            "key2": "value2",
-        }
-
+        """Use /plants endpoint to validate token."""
+        url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}{PLANTS}"
         async with aiohttp.ClientSession() as session:
             try:
-                async with session.post(
-                    url, headers=self.header, json=payload
-                ) as response:
+                async with session.get(url, headers=self.header) as response:
                     status_code = response.status
                     content = await response.text()
                     if status_code == 200:
-                        _LOGGER.info(
-                            "Authenticated!. HTTP %s, Content: %s, data: %s, Headers: %s",
-                            status_code,
-                            content,
-                            self.data,
-                            self.header,
-                        )
+                        _LOGGER.info("Token valid. /plants accessible")
                         return True
                     if status_code == 401:
-                        _LOGGER.debug(
-                            "Attempt to update token. HTTP %s, Content: %s, data: %s",
+                        _LOGGER.debug("Unauthorized. Attempt token refresh")
+                        if await self.handle_unauthorized_error(response):
+                            return await self.check_api_endpoint_health()
+                    else:
+                        _LOGGER.error(
+                            "Error during health check. Status code: %s, Content: %s",
                             status_code,
                             content,
-                            self.data,
                         )
-                        # Retry the request on 401 Unauthorized
-                        if await self.handle_unauthorized_error(response):
-                            # Retry the original request
-                            return await self.check_api_endpoint_health()
-
-                        return False
             except aiohttp.ClientError as e:
-                _LOGGER.error(
-                    "The endpoint API is unhealthy. Attempt to update token. Error: %s",
-                    e,
-                )
-            return False
+                _LOGGER.error("Error during health check: %s", e)
+        return False
 
     async def handle_unauthorized_error(self, response: aiohttp.ClientResponse) -> bool:
         """Head off 401 Unauthorized."""
@@ -186,9 +165,7 @@ class BticinoX8000Api:
             except aiohttp.ClientError as e:
                 return {
                     "status_code": 500,
-                    "error": (
-                        f"Error during set_chronothermostat_status request: " f"{e}"
-                    ),
+                    "error": (f"Error during set_chronothermostat_status request: {e}"),
                 }
 
     async def get_chronothermostat_status(

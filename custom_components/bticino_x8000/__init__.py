@@ -71,7 +71,7 @@ async def async_setup_entry(
     hass.config_entries.async_update_entry(config_entry, data=data)
     _LOGGER.debug("selected_thermostats: %s", data["selected_thermostats"])
     hass.async_create_task(
-        hass.config_entries.async_forward_entry_setup(config_entry, "climate")
+        hass.config_entries.async_forward_entry_setups(config_entry, ("climate",))
     )
     return True
 
