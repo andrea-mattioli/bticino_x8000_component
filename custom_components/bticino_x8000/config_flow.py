@@ -113,7 +113,7 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             + f"&redirect_uri={DEFAULT_REDIRECT_URI}"
         )
 
-    async def async_step_get_authorize_code(
+    async def async_step_get_authorize_code(  # pylint: disable=too-many-locals,too-many-nested-blocks
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
         """Get authorization code."""
@@ -204,7 +204,7 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                                         thermo["id"],
                                         len(programs) if programs else 0,
                                     )
-                                except Exception as e:
+                                except Exception as e:  # pylint: disable=broad-exception-caught
                                     _LOGGER.error(
                                         "Failed to get programs for thermo %s in plant %s: %s. "
                                         "Using empty program list.",
@@ -222,7 +222,7 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                                         "programs": programs,
                                     }
                                 )
-                        except Exception as e:
+                        except Exception as e:  # pylint: disable=broad-exception-caught
                             _LOGGER.error(
                                 "Unexpected error processing plant %s: %s. Skipping plant.",
                                 plant_id,

@@ -12,7 +12,7 @@ from .const import AUTH_REQ_ENDPOINT, DEFAULT_AUTH_BASE_URL
 _LOGGER = logging.getLogger(__name__)
 
 
-async def exchange_code_for_tokens(
+async def exchange_code_for_tokens(  # pylint: disable=too-many-locals
     client_id: str, client_secret: str, code: str
 ) -> tuple[str, Any, Any]:
     """Get access token from authorization code."""

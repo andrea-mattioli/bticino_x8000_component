@@ -19,7 +19,7 @@ PLATFORMS = [Platform.CLIMATE, Platform.SELECT]
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(
+async def async_setup_entry(  # pylint: disable=too-many-statements
     hass: HomeAssistant,
     config_entry: ConfigEntry,
 ) -> bool:
@@ -63,7 +63,7 @@ async def async_setup_entry(
                     response.get("status_code"),
                     response,
                 )
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-exception-caught
                 _LOGGER.error(
                     "add_c2c_subscription - Exception during C2C subscription. "
                     "plant_id: %s, error: %s",
@@ -120,7 +120,7 @@ async def async_setup_entry(
             # Schedule next refresh based on new expiration time
             schedule_token_refresh()
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             _LOGGER.error(
                 "update_token - Failed to refresh access token: %s", e, exc_info=True
             )
