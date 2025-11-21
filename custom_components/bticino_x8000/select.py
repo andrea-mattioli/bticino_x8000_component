@@ -62,7 +62,7 @@ async def async_setup_entry(
         entities.append(boost_select)
         _LOGGER.debug("Created boost select for %s", thermostat_name)
 
-    async_add_entities(entities, update_before_add=True)
+    async_add_entities(entities, update_before_add=False)
 
 
 # pylint: disable=abstract-method  # We implement async_select_option instead
