@@ -204,7 +204,9 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                                         thermo["id"],
                                         len(programs) if programs else 0,
                                     )
-                                except Exception as e:  # pylint: disable=broad-exception-caught
+                                except (
+                                    Exception
+                                ) as e:  # pylint: disable=broad-exception-caught
                                     _LOGGER.error(
                                         "Failed to get programs for thermo %s in plant %s: %s. "
                                         "Using empty program list.",

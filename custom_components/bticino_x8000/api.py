@@ -107,7 +107,7 @@ class BticinoX8000Api:
                                 )
                                 return {
                                     "status_code": 500,
-                                    "error": f"Invalid response structure. Keys found: {list(data.keys())}", # pylint: disable=line-too-long
+                                    "error": f"Invalid response structure. Keys found: {list(data.keys())}",  # pylint: disable=line-too-long
                                 }
                             return {
                                 "status_code": status_code,
@@ -180,7 +180,7 @@ class BticinoX8000Api:
                                 )
                                 return {
                                     "status_code": 500,
-                                    "error": f"Invalid response structure. Keys found: {list(data.keys())}", # pylint: disable=line-too-long
+                                    "error": f"Invalid response structure. Keys found: {list(data.keys())}",  # pylint: disable=line-too-long
                                 }
                             return {
                                 "status_code": status_code,
@@ -201,7 +201,7 @@ class BticinoX8000Api:
                             }
                     if status_code == 401:
                         _LOGGER.debug(
-                            "get_topology - Received 401 for plant_id: %s, attempting token refresh", # pylint: disable=line-too-long
+                            "get_topology - Received 401 for plant_id: %s, attempting token refresh",  # pylint: disable=line-too-long
                             plant_id,
                         )
                         # Retry the request on 401 Unauthorized
@@ -376,7 +376,7 @@ class BticinoX8000Api:
 
                         if "chronothermostats" not in data:
                             _LOGGER.error(
-                                "get_chronothermostat_programlist - Response missing 'chronothermostats' key. " # pylint: disable=line-too-long
+                                "get_chronothermostat_programlist - Response missing 'chronothermostats' key. "  # pylint: disable=line-too-long
                                 "plant_id: %s, module_id: %s, available keys: %s, response: %s",
                                 plant_id,
                                 module_id,
@@ -385,7 +385,7 @@ class BticinoX8000Api:
                             )
                             return {
                                 "status_code": 500,
-                                "error": f"Invalid response structure. Keys found: {list(data.keys())}", # pylint: disable=line-too-long
+                                "error": f"Invalid response structure. Keys found: {list(data.keys())}",  # pylint: disable=line-too-long
                             }
 
                         if not data["chronothermostats"]:
