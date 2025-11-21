@@ -29,9 +29,7 @@ async def exchange_code_for_tokens(
     async with aiohttp.ClientSession() as session:
         async with session.post(token_url, data=payload) as response:
             status_code = response.status
-            _LOGGER.debug(
-                "exchange_code_for_tokens - Response status: %s", status_code
-            )
+            _LOGGER.debug("exchange_code_for_tokens - Response status: %s", status_code)
 
             if status_code != 200:
                 content = await response.text()

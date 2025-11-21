@@ -125,7 +125,9 @@ class BticinoX8000Api:
                                 "error": f"Error parsing response: {e}",
                             }
                     if status_code == 401:
-                        _LOGGER.debug("get_plants - Received 401, attempting token refresh")
+                        _LOGGER.debug(
+                            "get_plants - Received 401, attempting token refresh"
+                        )
                         # Retry the request on 401 Unauthorized
                         if await self.handle_unauthorized_error(response):
                             # Retry the original request

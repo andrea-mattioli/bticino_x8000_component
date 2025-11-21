@@ -108,7 +108,9 @@ class BticinoBoostSelect(SelectEntity):
             f"{DOMAIN}_webhook_update",
             self.handle_webhook_update,
         )
-        _LOGGER.debug("Boost select %s connected to webhook dispatcher", self._thermostat_name)
+        _LOGGER.debug(
+            "Boost select %s connected to webhook dispatcher", self._thermostat_name
+        )
 
     def handle_webhook_update(self, event: dict[str, Any]) -> None:
         """Handle webhook updates for boost state."""
@@ -117,7 +119,9 @@ class BticinoBoostSelect(SelectEntity):
             if not data_list:
                 return
 
-            chronothermostats = data_list[0].get("data", {}).get("chronothermostats", [])
+            chronothermostats = (
+                data_list[0].get("data", {}).get("chronothermostats", [])
+            )
             for chrono_data in chronothermostats:
                 plant_data = chrono_data.get("sender", {}).get("plant", {})
                 plant_id = plant_data.get("id")
@@ -133,7 +137,7 @@ class BticinoBoostSelect(SelectEntity):
                 _LOGGER.debug(
                     "Boost select updated from webhook for %s: %s",
                     self._thermostat_name,
-                    self._attr_current_option
+                    self._attr_current_option,
                 )
                 return
         except Exception as e:
@@ -141,7 +145,7 @@ class BticinoBoostSelect(SelectEntity):
                 "Error handling webhook update for boost %s: %s",
                 self._thermostat_name,
                 e,
-                exc_info=True
+                exc_info=True,
             )
 
     def _update_boost_state_from_data(self, chrono_data: dict[str, Any]) -> None:
@@ -155,7 +159,7 @@ class BticinoBoostSelect(SelectEntity):
                 _LOGGER.debug(
                     "Boost detected for %s, activationTime: %s",
                     self._thermostat_name,
-                    activation_time
+                    activation_time,
                 )
 
                 # Format può essere:
@@ -179,7 +183,7 @@ class BticinoBoostSelect(SelectEntity):
                                 self._attr_current_option = "90"
                             _LOGGER.debug(
                                 "Boost duration calculated from start/end: %s minutes",
-                                self._attr_current_option
+                                self._attr_current_option,
                             )
                             return
                 else:
@@ -194,7 +198,7 @@ class BticinoBoostSelect(SelectEntity):
                         _LOGGER.debug(
                             "Boost remaining time for %s: %s minutes",
                             self._thermostat_name,
-                            remaining_minutes
+                            remaining_minutes,
                         )
 
                         # Stima la durata originale in base al tempo rimanente
@@ -210,13 +214,13 @@ class BticinoBoostSelect(SelectEntity):
                                 self._attr_current_option = "90"
                             _LOGGER.debug(
                                 "Boost duration estimated from remaining time: %s minutes",
-                                self._attr_current_option
+                                self._attr_current_option,
                             )
                             return
             else:
                 _LOGGER.warning(
                     "Boost mode active for %s but no activationTime found",
-                    self._thermostat_name
+                    self._thermostat_name,
                 )
 
         # Se non è boost, è off
@@ -235,14 +239,14 @@ class BticinoBoostSelect(SelectEntity):
                 _LOGGER.debug(
                     "Boost state for %s: %s",
                     self._thermostat_name,
-                    self._attr_current_option
+                    self._attr_current_option,
                 )
         except Exception as e:
             _LOGGER.error(
                 "Error reading boost state for %s: %s",
                 self._thermostat_name,
                 e,
-                exc_info=True
+                exc_info=True,
             )
 
     async def async_select_option(self, option: str) -> None:
@@ -334,7 +338,9 @@ class BticinoProgramSelect(SelectEntity):
         self._attr_unique_id = f"{DOMAIN}_{topology_id}_program"
 
         # Default al primo programma, sarà aggiornato da async_update
-        self._attr_current_option = self._attr_options[0] if self._attr_options else None
+        self._attr_current_option = (
+            self._attr_options[0] if self._attr_options else None
+        )
 
     @property
     def device_info(self):
@@ -353,7 +359,9 @@ class BticinoProgramSelect(SelectEntity):
             f"{DOMAIN}_webhook_update",
             self.handle_webhook_update,
         )
-        _LOGGER.debug("Program select %s connected to webhook dispatcher", self._thermostat_name)
+        _LOGGER.debug(
+            "Program select %s connected to webhook dispatcher", self._thermostat_name
+        )
 
     def handle_webhook_update(self, event: dict[str, Any]) -> None:
         """Handle webhook updates for program state."""
@@ -362,7 +370,9 @@ class BticinoProgramSelect(SelectEntity):
             if not data_list:
                 return
 
-            chronothermostats = data_list[0].get("data", {}).get("chronothermostats", [])
+            chronothermostats = (
+                data_list[0].get("data", {}).get("chronothermostats", [])
+            )
             for chrono_data in chronothermostats:
                 plant_data = chrono_data.get("sender", {}).get("plant", {})
                 plant_id = plant_data.get("id")
@@ -378,7 +388,7 @@ class BticinoProgramSelect(SelectEntity):
                 _LOGGER.debug(
                     "Program select updated from webhook for %s: %s",
                     self._thermostat_name,
-                    self._attr_current_option
+                    self._attr_current_option,
                 )
                 return
         except Exception as e:
@@ -386,7 +396,7 @@ class BticinoProgramSelect(SelectEntity):
                 "Error handling webhook update for program %s: %s",
                 self._thermostat_name,
                 e,
-                exc_info=True
+                exc_info=True,
             )
 
     def _update_program_state_from_data(self, chrono_data: dict[str, Any]) -> None:
@@ -418,14 +428,14 @@ class BticinoProgramSelect(SelectEntity):
                     "Program state for %s: %s (mode: %s)",
                     self._thermostat_name,
                     self._attr_current_option,
-                    chrono_data.get("mode", "unknown")
+                    chrono_data.get("mode", "unknown"),
                 )
         except Exception as e:
             _LOGGER.error(
                 "Error reading program for %s: %s",
                 self._thermostat_name,
                 e,
-                exc_info=True
+                exc_info=True,
             )
 
     async def async_select_option(self, option: str) -> None:

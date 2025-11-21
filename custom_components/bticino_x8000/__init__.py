@@ -43,7 +43,9 @@ async def async_setup_entry(
                     plant_id, {"EndPointUrl": webhook_endpoint}
                 )
                 _LOGGER.debug(
-                    "add_c2c_subscription - Response for plant %s: %s", plant_id, response
+                    "add_c2c_subscription - Response for plant %s: %s",
+                    plant_id,
+                    response,
                 )
 
                 if response["status_code"] == 201:
