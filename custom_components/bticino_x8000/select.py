@@ -414,7 +414,7 @@ class BticinoProgramSelect(
             program_list = chrono_data["programs"]
             if program_list:
                 program_number = program_list[0].get("number")
-                # Trova il nome del programma dal numero
+                # Find the program name by number
                 for prog in self._programs:
                     if prog["number"] == program_number:
                         self._attr_current_option = prog["name"]
