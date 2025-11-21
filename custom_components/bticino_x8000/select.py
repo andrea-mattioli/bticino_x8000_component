@@ -1,13 +1,13 @@
 """Select entities for Bticino X8000."""
 
 import logging
-from datetime import datetime
 from typing import Any
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
@@ -18,7 +18,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,
+    hass: HomeAssistant,  # pylint: disable=unused-argument
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
@@ -65,12 +65,13 @@ async def async_setup_entry(
     async_add_entities(entities, update_before_add=True)
 
 
-class BticinoBoostSelect(SelectEntity):
+# pylint: disable=abstract-method  # We implement async_select_option instead
+class BticinoBoostSelect(SelectEntity):  # pylint: disable=too-many-instance-attributes
     """Select entity for boost control."""
 
     _attr_has_entity_name = True
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         data: dict[str, Any],
         plant_id: str,
@@ -92,18 +93,18 @@ class BticinoBoostSelect(SelectEntity):
         self._attr_current_option = "off"  # Default: sarà aggiornato da async_update
 
     @property
-    def device_info(self):
+    def device_info(self) -> DeviceInfo:
         """Return device info to link with climate entity."""
-        return {
-            "identifiers": {(DOMAIN, self._topology_id)},
-            "name": f"Bticino {self._thermostat_name}",
-            "manufacturer": "Legrand",
-            "model": "X8000",
-        }
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._topology_id)},
+            name=f"Bticino {self._thermostat_name}",
+            manufacturer="Legrand",
+            model="X8000",
+        )
 
     async def async_added_to_hass(self) -> None:
         """Register dispatcher connection for webhook updates."""
-        async_dispatcher_connect(
+        async_dispatcher_connect(  # type: ignore[has-type]
             self.hass,
             f"{DOMAIN}_webhook_update",
             self.handle_webhook_update,
@@ -140,7 +141,7 @@ class BticinoBoostSelect(SelectEntity):
                     self._attr_current_option,
                 )
                 return
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             _LOGGER.error(
                 "Error handling webhook update for boost %s: %s",
                 self._thermostat_name,
@@ -148,7 +149,9 @@ class BticinoBoostSelect(SelectEntity):
                 exc_info=True,
             )
 
-    def _update_boost_state_from_data(self, chrono_data: dict[str, Any]) -> None:
+    def _update_boost_state_from_data(  # pylint: disable=too-many-branches,too-many-nested-blocks
+        self, chrono_data: dict[str, Any]
+    ) -> None:
         """Update boost state from chronothermostat data."""
         mode = chrono_data.get("mode", "").lower()
 
@@ -241,7 +244,7 @@ class BticinoBoostSelect(SelectEntity):
                     self._thermostat_name,
                     self._attr_current_option,
                 )
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             _LOGGER.error(
                 "Error reading boost state for %s: %s",
                 self._thermostat_name,
@@ -311,12 +314,13 @@ class BticinoBoostSelect(SelectEntity):
             )
 
 
-class BticinoProgramSelect(SelectEntity):
+# pylint: disable=abstract-method  # We implement async_select_option instead
+class BticinoProgramSelect(SelectEntity):  # pylint: disable=too-many-instance-attributes
     """Select entity for thermostat program."""
 
     _attr_has_entity_name = True
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         data: dict[str, Any],
         plant_id: str,
@@ -343,18 +347,18 @@ class BticinoProgramSelect(SelectEntity):
         )
 
     @property
-    def device_info(self):
+    def device_info(self) -> DeviceInfo:
         """Return device info to link with climate entity."""
-        return {
-            "identifiers": {(DOMAIN, self._topology_id)},
-            "name": f"Bticino {self._thermostat_name}",
-            "manufacturer": "Legrand",
-            "model": "X8000",
-        }
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._topology_id)},
+            name=f"Bticino {self._thermostat_name}",
+            manufacturer="Legrand",
+            model="X8000",
+        )
 
     async def async_added_to_hass(self) -> None:
         """Register dispatcher connection for webhook updates."""
-        async_dispatcher_connect(
+        async_dispatcher_connect(  # type: ignore[has-type]
             self.hass,
             f"{DOMAIN}_webhook_update",
             self.handle_webhook_update,
@@ -391,7 +395,7 @@ class BticinoProgramSelect(SelectEntity):
                     self._attr_current_option,
                 )
                 return
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             _LOGGER.error(
                 "Error handling webhook update for program %s: %s",
                 self._thermostat_name,
@@ -430,7 +434,7 @@ class BticinoProgramSelect(SelectEntity):
                     self._attr_current_option,
                     chrono_data.get("mode", "unknown"),
                 )
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             _LOGGER.error(
                 "Error reading program for %s: %s",
                 self._thermostat_name,
