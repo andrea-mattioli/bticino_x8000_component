@@ -162,20 +162,75 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     plant_ids = list({plant["id"] for plant in plants_data["data"]})
                     _LOGGER.info("PLANTS_LIST: %s", plant_ids)
                     for plant_id in plant_ids:
-                        topologies = await self.bticino_api.get_topology(plant_id)
-                        _LOGGER.info("TOPOLOGIES_LIST: %s", topologies["data"])
-                        if plant_id not in thermostat_options:
-                            thermostat_options[plant_id] = []
-                        for thermo in topologies["data"]:
-                            thermostat_options[plant_id].append(
-                                {
-                                    "id": thermo["id"],
-                                    "name": thermo["name"],
-                                    "programs": await self.get_programs_from_api(
-                                        plant_id, thermo["id"]
-                                    ),
-                                }
+                        _LOGGER.debug("Processing plant_id: %s", plant_id)
+                        try:
+                            topologies = await self.bticino_api.get_topology(plant_id)
+                            _LOGGER.debug(
+                                "TOPOLOGIES for plant %s: %s", plant_id, topologies
                             )
+
+                            # Check if topology fetch was successful
+                            if topologies.get("status_code") != 200:
+                                _LOGGER.error(
+                                    "Failed to get topology for plant %s: %s. Skipping plant.",
+                                    plant_id,
+                                    topologies.get("error"),
+                                )
+                                continue  # Skip this plant instead of crashing
+
+                            if "data" not in topologies:
+                                _LOGGER.error(
+                                    "No data in topology response for plant %s. Skipping plant.",
+                                    plant_id,
+                                )
+                                continue
+
+                            if plant_id not in thermostat_options:
+                                thermostat_options[plant_id] = []
+
+                            for thermo in topologies["data"]:
+                                _LOGGER.debug(
+                                    "Processing thermostat: %s in plant: %s",
+                                    thermo.get("id"),
+                                    plant_id,
+                                )
+
+                                try:
+                                    programs = await self.get_programs_from_api(
+                                        plant_id, thermo["id"]
+                                    )
+                                    _LOGGER.debug(
+                                        "Programs retrieved for thermo %s: %s programs found",
+                                        thermo["id"],
+                                        len(programs) if programs else 0,
+                                    )
+                                except Exception as e:
+                                    _LOGGER.error(
+                                        "Failed to get programs for thermo %s in plant %s: %s. "
+                                        "Using empty program list.",
+                                        thermo.get("id"),
+                                        plant_id,
+                                        e,
+                                        exc_info=True,
+                                    )
+                                    programs = []  # Fallback to empty list
+
+                                thermostat_options[plant_id].append(
+                                    {
+                                        "id": thermo["id"],
+                                        "name": thermo["name"],
+                                        "programs": programs,
+                                    }
+                                )
+                        except Exception as e:
+                            _LOGGER.error(
+                                "Unexpected error processing plant %s: %s. Skipping plant.",
+                                plant_id,
+                                e,
+                                exc_info=True,
+                            )
+                            continue  # Skip this plant and continue with others
+
                     self._thermostat_options = thermostat_options
                     _LOGGER.info("THERMOSTAT_DETECTED: %s", self._thermostat_options)
 
@@ -212,12 +267,50 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> list[dict[str, Any]] | None:
         """Retrieve the program list."""
         if self.bticino_api is not None:
+            _LOGGER.debug(
+                "get_programs_from_api - Fetching programs for plant_id: %s, topology_id: %s",
+                plant_id,
+                topology_id,
+            )
+
             programs = await self.bticino_api.get_chronothermostat_programlist(
                 plant_id, topology_id
             )
+
+            _LOGGER.debug("get_programs_from_api - Response: %s", programs)
+
+            # Check if API call was successful
+            if programs.get("status_code") != 200:
+                _LOGGER.error(
+                    "get_programs_from_api - Failed to get programs. "
+                    "plant_id: %s, topology_id: %s, status: %s, error: %s",
+                    plant_id,
+                    topology_id,
+                    programs.get("status_code"),
+                    programs.get("error"),
+                )
+                return []  # Return empty list instead of None to avoid crashes
+
+            # Check if data key exists
+            if "data" not in programs:
+                _LOGGER.warning(
+                    "get_programs_from_api - No data in response. "
+                    "plant_id: %s, topology_id: %s",
+                    plant_id,
+                    topology_id,
+                )
+                return []
+
+            # Filter programs
             filtered_programs = [
-                program for program in programs["data"] if program["number"] != 0
+                program for program in programs["data"] if program.get("number") != 0
             ]
+
+            _LOGGER.debug(
+                "get_programs_from_api - Filtered programs count: %s for topology_id: %s",
+                len(filtered_programs),
+                topology_id,
+            )
 
             return filtered_programs
         return None

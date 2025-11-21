@@ -60,17 +60,24 @@ class BticinoX8000Api:
 
         if status_code == 401:
             _LOGGER.debug("Received 401 Unauthorized error. Attempting token refresh")
-            (
-                access_token,
-                _,
-                _,
-            ) = await refresh_access_token(self.data)
-            self.header = {
-                "Authorization": access_token,
-                "Ocp-Apim-Subscription-Key": self.data["subscription_key"],
-                "Content-Type": "application/json",
-            }
-            return True
+            try:
+                (
+                    access_token,
+                    _,
+                    _,
+                ) = await refresh_access_token(self.data)
+                self.header = {
+                    "Authorization": access_token,
+                    "Ocp-Apim-Subscription-Key": self.data["subscription_key"],
+                    "Content-Type": "application/json",
+                }
+                _LOGGER.debug("Token refresh successful after 401 error")
+                return True
+            except Exception as e:
+                _LOGGER.error(
+                    "Token refresh failed after 401 error: %s", e, exc_info=True
+                )
+                return False
         return False
 
     async def get_plants(self) -> dict[str, Any]:
@@ -82,16 +89,50 @@ class BticinoX8000Api:
                     status_code = response.status
                     content = await response.text()
 
+                    _LOGGER.debug(
+                        "get_plants - status_code: %s, content preview: %s",
+                        status_code,
+                        content[:200],
+                    )
+
                     if status_code == 200:
-                        return {
-                            "status_code": status_code,
-                            "data": json.loads(content)["plants"],
-                        }
+                        try:
+                            data = json.loads(content)
+                            if "plants" not in data:
+                                _LOGGER.error(
+                                    "get_plants - Response missing 'plants' key. "
+                                    "Available keys: %s, response: %s",
+                                    list(data.keys()),
+                                    content,
+                                )
+                                return {
+                                    "status_code": 500,
+                                    "error": f"Invalid response structure. Keys found: {list(data.keys())}",
+                                }
+                            return {
+                                "status_code": status_code,
+                                "data": data["plants"],
+                            }
+                        except (KeyError, json.JSONDecodeError) as e:
+                            _LOGGER.error(
+                                "get_plants - Error parsing response: %s, content: %s",
+                                e,
+                                content,
+                                exc_info=True,
+                            )
+                            return {
+                                "status_code": 500,
+                                "error": f"Error parsing response: {e}",
+                            }
                     if status_code == 401:
+                        _LOGGER.debug("get_plants - Received 401, attempting token refresh")
                         # Retry the request on 401 Unauthorized
                         if await self.handle_unauthorized_error(response):
                             # Retry the original request
                             return await self.get_plants()
+                    _LOGGER.error(
+                        "get_plants - HTTP error %s. Content: %s", status_code, content
+                    )
                     return {
                         "status_code": status_code,
                         "error": (
@@ -102,6 +143,7 @@ class BticinoX8000Api:
                         ),
                     }
             except aiohttp.ClientError as e:
+                _LOGGER.error("get_plants - Network error: %s", e, exc_info=True)
                 return {
                     "status_code": 500,
                     "error": f"Failed get_plants: {e}",
@@ -116,21 +158,71 @@ class BticinoX8000Api:
                     status_code = response.status
                     content = await response.text()
 
+                    _LOGGER.debug(
+                        "get_topology - plant_id: %s, status_code: %s, content preview: %s",
+                        plant_id,
+                        status_code,
+                        content[:200],
+                    )
+
                     if status_code == 200:
-                        return {
-                            "status_code": status_code,
-                            "data": json.loads(content)["plant"]["modules"],
-                        }
+                        try:
+                            data = json.loads(content)
+                            if "plant" not in data or "modules" not in data["plant"]:
+                                _LOGGER.error(
+                                    "get_topology - Invalid response structure. "
+                                    "plant_id: %s, available keys: %s, response: %s",
+                                    plant_id,
+                                    list(data.keys()),
+                                    content,
+                                )
+                                return {
+                                    "status_code": 500,
+                                    "error": f"Invalid response structure. Keys found: {list(data.keys())}",
+                                }
+                            return {
+                                "status_code": status_code,
+                                "data": data["plant"]["modules"],
+                            }
+                        except (KeyError, json.JSONDecodeError) as e:
+                            _LOGGER.error(
+                                "get_topology - Error parsing response: %s. "
+                                "plant_id: %s, content: %s",
+                                e,
+                                plant_id,
+                                content,
+                                exc_info=True,
+                            )
+                            return {
+                                "status_code": 500,
+                                "error": f"Error parsing response: {e}",
+                            }
                     if status_code == 401:
+                        _LOGGER.debug(
+                            "get_topology - Received 401 for plant_id: %s, attempting token refresh",
+                            plant_id,
+                        )
                         # Retry the request on 401 Unauthorized
                         if await self.handle_unauthorized_error(response):
                             # Retry the original request
                             return await self.get_topology(plant_id)
+                    _LOGGER.error(
+                        "get_topology - HTTP error %s for plant_id: %s. Content: %s",
+                        status_code,
+                        plant_id,
+                        content,
+                    )
                     return {
                         "status_code": status_code,
-                        "error": "Failed to get topology.",
+                        "error": f"Failed to get topology. HTTP {status_code}: {content}",
                     }
             except aiohttp.ClientError as e:
+                _LOGGER.error(
+                    "get_topology - Network error for plant_id: %s. Error: %s",
+                    plant_id,
+                    e,
+                    exc_info=True,
+                )
                 return {
                     "status_code": 500,
                     "error": f"Failed to get topology: {e}",
@@ -239,6 +331,18 @@ class BticinoX8000Api:
                 async with session.get(url, headers=self.header) as response:
                     status_code = response.status
                     content = await response.text()
+
+                    _LOGGER.debug(
+                        "get_chronothermostat_programlist - plant_id: %s, module_id: %s, "
+                        "status_code: %s",
+                        plant_id,
+                        module_id,
+                        status_code,
+                    )
+                    _LOGGER.debug(
+                        "get_chronothermostat_programlist - content: %s", content[:500]
+                    )
+
                     if status_code == 401:
                         # Retry the request on 401 Unauthorized
                         if await self.handle_unauthorized_error(response):
@@ -247,11 +351,81 @@ class BticinoX8000Api:
                                 plant_id, module_id
                             )
 
-                    return {
-                        "status_code": status_code,
-                        "data": json.loads(content)["chronothermostats"][0]["programs"],
-                    }
+                    if status_code != 200:
+                        _LOGGER.error(
+                            "get_chronothermostat_programlist - HTTP error. "
+                            "plant_id: %s, module_id: %s, status: %s, content: %s",
+                            plant_id,
+                            module_id,
+                            status_code,
+                            content,
+                        )
+                        return {
+                            "status_code": status_code,
+                            "error": f"HTTP {status_code}: {content}",
+                        }
+
+                    try:
+                        data = json.loads(content)
+                        _LOGGER.debug(
+                            "get_chronothermostat_programlist - parsed JSON keys: %s",
+                            list(data.keys()),
+                        )
+
+                        if "chronothermostats" not in data:
+                            _LOGGER.error(
+                                "get_chronothermostat_programlist - Response missing 'chronothermostats' key. "
+                                "plant_id: %s, module_id: %s, available keys: %s, response: %s",
+                                plant_id,
+                                module_id,
+                                list(data.keys()),
+                                content,
+                            )
+                            return {
+                                "status_code": 500,
+                                "error": f"Invalid response structure. Keys found: {list(data.keys())}",
+                            }
+
+                        if not data["chronothermostats"]:
+                            _LOGGER.warning(
+                                "get_chronothermostat_programlist - Empty chronothermostats list. "
+                                "plant_id: %s, module_id: %s",
+                                plant_id,
+                                module_id,
+                            )
+                            return {
+                                "status_code": 200,
+                                "data": [],
+                            }
+
+                        return {
+                            "status_code": status_code,
+                            "data": data["chronothermostats"][0]["programs"],
+                        }
+                    except (KeyError, IndexError, json.JSONDecodeError) as e:
+                        _LOGGER.error(
+                            "get_chronothermostat_programlist - Error parsing response: %s. "
+                            "plant_id: %s, module_id: %s, content: %s",
+                            e,
+                            plant_id,
+                            module_id,
+                            content,
+                            exc_info=True,
+                        )
+                        return {
+                            "status_code": 500,
+                            "error": f"Error parsing response: {e}",
+                        }
+
             except aiohttp.ClientError as e:
+                _LOGGER.error(
+                    "get_chronothermostat_programlist - Network error: %s. "
+                    "plant_id: %s, module_id: %s",
+                    e,
+                    plant_id,
+                    module_id,
+                    exc_info=True,
+                )
                 return {
                     "status_code": 500,
                     "error": f"Error during get_chronothermostat_programlist request: {e}",

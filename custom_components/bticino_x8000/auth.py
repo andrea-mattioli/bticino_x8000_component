@@ -24,9 +24,45 @@ async def exchange_code_for_tokens(
         "client_id": client_id,
     }
 
+    _LOGGER.debug("exchange_code_for_tokens - Requesting token from: %s", token_url)
+
     async with aiohttp.ClientSession() as session:
         async with session.post(token_url, data=payload) as response:
-            token_data = await response.json()
+            status_code = response.status
+            _LOGGER.debug(
+                "exchange_code_for_tokens - Response status: %s", status_code
+            )
+
+            if status_code != 200:
+                content = await response.text()
+                _LOGGER.error(
+                    "exchange_code_for_tokens - Token request failed. "
+                    "Status: %s, Response: %s",
+                    status_code,
+                    content,
+                )
+                raise ValueError(
+                    f"Failed to exchange code for tokens. HTTP {status_code}: {content}"
+                )
+
+            try:
+                token_data = await response.json()
+            except Exception as e:
+                content = await response.text()
+                _LOGGER.error(
+                    "exchange_code_for_tokens - Failed to parse JSON response: %s. Content: %s",
+                    e,
+                    content,
+                    exc_info=True,
+                )
+                raise ValueError(f"Invalid JSON response from auth server: {e}") from e
+
+    if not token_data.get("access_token"):
+        _LOGGER.error(
+            "exchange_code_for_tokens - Missing access_token in response: %s",
+            token_data,
+        )
+        raise ValueError("Missing access_token in auth response")
 
     access_token = "Bearer " + token_data.get("access_token")
     refresh_token = token_data.get("refresh_token")
@@ -46,7 +82,7 @@ async def exchange_code_for_tokens(
     access_token_expires_on = dt_util.utc_from_timestamp(expires_ts)
 
     _LOGGER.debug("Access token expires on: %s", access_token_expires_on.isoformat())
-    _LOGGER.debug("Token data: %s", token_data)
+    _LOGGER.debug("Token data keys: %s", list(token_data.keys()))
 
     return access_token, refresh_token, access_token_expires_on
 
@@ -61,9 +97,42 @@ async def refresh_access_token(data: dict[str, Any]) -> tuple[str, Any, Any]:
         "client_id": data["client_id"],
     }
 
+    _LOGGER.debug("refresh_access_token - Requesting token refresh from: %s", token_url)
+
     async with aiohttp.ClientSession() as session:
         async with session.post(token_url, data=payload) as response:
-            token_data = await response.json()
+            status_code = response.status
+            _LOGGER.debug("refresh_access_token - Response status: %s", status_code)
+
+            if status_code != 200:
+                content = await response.text()
+                _LOGGER.error(
+                    "refresh_access_token - Token refresh failed. "
+                    "Status: %s, Response: %s",
+                    status_code,
+                    content,
+                )
+                raise ValueError(
+                    f"Failed to refresh access token. HTTP {status_code}: {content}"
+                )
+
+            try:
+                token_data = await response.json()
+            except Exception as e:
+                content = await response.text()
+                _LOGGER.error(
+                    "refresh_access_token - Failed to parse JSON response: %s. Content: %s",
+                    e,
+                    content,
+                    exc_info=True,
+                )
+                raise ValueError(f"Invalid JSON response from auth server: {e}") from e
+
+    if not token_data.get("access_token"):
+        _LOGGER.error(
+            "refresh_access_token - Missing access_token in response: %s", token_data
+        )
+        raise ValueError("Missing access_token in refresh response")
 
     access_token = "Bearer " + token_data.get("access_token")
     refresh_token = token_data.get("refresh_token")
@@ -83,6 +152,6 @@ async def refresh_access_token(data: dict[str, Any]) -> tuple[str, Any, Any]:
     access_token_expires_on = dt_util.utc_from_timestamp(expires_ts)
 
     _LOGGER.debug("Refreshed token expires on: %s", access_token_expires_on.isoformat())
-    _LOGGER.debug("Refreshed token data: %s", token_data)
+    _LOGGER.debug("Refreshed token data keys: %s", list(token_data.keys()))
 
     return access_token, refresh_token, access_token_expires_on
