@@ -315,7 +315,9 @@ class BticinoBoostSelect(SelectEntity):  # pylint: disable=too-many-instance-att
 
 
 # pylint: disable=abstract-method  # We implement async_select_option instead
-class BticinoProgramSelect(SelectEntity):  # pylint: disable=too-many-instance-attributes
+class BticinoProgramSelect(
+    SelectEntity
+):  # pylint: disable=too-many-instance-attributes
     """Select entity for thermostat program."""
 
     _attr_has_entity_name = True
