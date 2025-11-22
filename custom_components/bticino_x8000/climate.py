@@ -17,6 +17,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_platform
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
@@ -120,6 +121,16 @@ class BticinoX8000ClimateEntity(ClimateEntity):
     def unique_id(self) -> str:
         """Return a unique ID to use for this entity."""
         return f"{self._topology_id}_climate"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device info to link with other entities."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._topology_id)},
+            name=f"Bticino {self._name}",
+            manufacturer="Legrand",
+            model="X8000",
+        )
 
     @property
     def name(self) -> str:
@@ -262,7 +273,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
                             option["name"] for option in self._programs_name
                         ],
                         self._mode.lower()
-                        + "_time_remainig": self.calculate_remaining_time(
+                        + "_time_remaining": self.calculate_remaining_time(
                             self._activation_time
                         ),
                     }
@@ -565,7 +576,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
                             option["name"] for option in self._programs_name
                         ],
                         self._mode.lower()
-                        + "_time_remainig": self.calculate_remaining_time(
+                        + "_time_remaining": self.calculate_remaining_time(
                             self._activation_time
                         ),
                     }
