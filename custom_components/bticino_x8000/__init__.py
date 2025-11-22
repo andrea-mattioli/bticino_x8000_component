@@ -13,7 +13,7 @@ from .auth import refresh_access_token
 from .const import DOMAIN
 from .webhook import BticinoX8000WebhookHandler
 
-PLATFORMS = [Platform.CLIMATE, Platform.SELECT]
+PLATFORMS = [Platform.CLIMATE, Platform.SELECT, Platform.SENSOR]
 
 _LOGGER = logging.getLogger(__name__)
 

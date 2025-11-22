@@ -134,7 +134,7 @@ class BticinoBoostSelect(SelectEntity):  # pylint: disable=too-many-instance-att
 
                 # Aggiorna stato boost
                 self._update_boost_state_from_data(chrono_data)
-                self.async_write_ha_state()
+                self.schedule_update_ha_state()
                 _LOGGER.debug(
                     "Boost select updated from webhook for %s: %s",
                     self._thermostat_name,
@@ -263,7 +263,7 @@ class BticinoBoostSelect(SelectEntity):  # pylint: disable=too-many-instance-att
             return
 
         self._attr_current_option = option
-        self.async_write_ha_state()
+        self.schedule_update_ha_state()
 
         climate_entity_id = f"climate.{self._thermostat_name.lower().replace(' ', '_')}"
 
@@ -390,7 +390,7 @@ class BticinoProgramSelect(
 
                 # Aggiorna stato programma
                 self._update_program_state_from_data(chrono_data)
-                self.async_write_ha_state()
+                self.schedule_update_ha_state()
                 _LOGGER.debug(
                     "Program select updated from webhook for %s: %s",
                     self._thermostat_name,
@@ -455,7 +455,7 @@ class BticinoProgramSelect(
             return
 
         self._attr_current_option = option
-        self.async_write_ha_state()
+        self.schedule_update_ha_state()
 
         # Call the service to change program
         await self.hass.services.async_call(
