@@ -604,7 +604,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
             self.async_write_ha_state()
 
             # Notify sensors to update with the same data (no extra API call)
-            async_dispatcher_send(
+            async_dispatcher_send(  # type: ignore[has-type]
                 self.hass,
                 f"{DOMAIN}_webhook_update",
                 {"data": [{"data": {"chronothermostats": [chronothermostat_data]}}]},
