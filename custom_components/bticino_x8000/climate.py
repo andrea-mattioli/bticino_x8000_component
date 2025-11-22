@@ -16,7 +16,10 @@ from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_platform
-from homeassistant.helpers.dispatcher import async_dispatcher_connect, async_dispatcher_send
+from homeassistant.helpers.dispatcher import (
+    async_dispatcher_connect,
+    async_dispatcher_send,
+)
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
@@ -599,7 +602,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
             hygrometer_data = chronothermostat_data["hygrometer"]["measures"][0]
             self._humidity = float(hygrometer_data["value"])
             self.async_write_ha_state()
-            
+
             # Notify sensors to update with the same data (no extra API call)
             async_dispatcher_send(
                 self.hass,
