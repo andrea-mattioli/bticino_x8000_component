@@ -1,4 +1,5 @@
 """Climate."""
+
 # pylint: disable=duplicate-code
 
 import logging

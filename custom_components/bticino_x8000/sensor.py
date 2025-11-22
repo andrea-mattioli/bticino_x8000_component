@@ -1,4 +1,5 @@
 """Sensor platform for Bticino X8000."""
+
 # pylint: disable=duplicate-code
 
 import logging
