@@ -518,7 +518,9 @@ class BticinoBoostTimeRemainingSensor(BticinoBaseSensor):
         self._attr_unique_id = f"bticino_x8000_{topology_id}_boost_time_remaining"
         self._attr_native_value = None
 
-    def handle_webhook_update(self, event: dict[str, Any]) -> None:
+    def handle_webhook_update(  # pylint: disable=too-many-locals
+        self, event: dict[str, Any]
+    ) -> None:
         """Handle webhook updates for boost time remaining."""
         try:
             data_list = event.get("data", [])
