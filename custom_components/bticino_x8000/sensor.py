@@ -1,4 +1,5 @@
 """Sensor platform for Bticino X8000."""
+# pylint: disable=duplicate-code
 
 import logging
 from typing import Any
@@ -21,8 +22,8 @@ from .const import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(
-    hass: HomeAssistant,
+async def async_setup_entry(  # pylint: disable=too-many-locals
+    hass: HomeAssistant,  # pylint: disable=unused-argument
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
