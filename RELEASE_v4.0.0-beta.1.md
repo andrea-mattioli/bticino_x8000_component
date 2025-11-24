@@ -1,4 +1,4 @@
-# Release v4.0.0-beta.1 - Sensor Entities & API Optimization
+# Release v4.0.1-beta.1 - Sensor Entities & API Optimization
 
 ## ⚠️ BETA RELEASE - Testing Required
 
@@ -15,7 +15,7 @@ This is a beta release with significant improvements and new features. Please te
   ```yaml
   # Before (v3.x)
   {{ state_attr('climate.sala', 'boost_time_remainig') }}
-  
+
   # After (v4.0)
   {{ state_attr('climate.sala', 'boost_time_remaining') }}
   ```
@@ -32,12 +32,12 @@ Added **7 dedicated sensor entities** per thermostat for better integration and 
   - Device Class: `temperature`
   - State Class: `measurement`
   - Real-time updates via webhook
-  
+
 - **`sensor.{name}_humidity`** - Current room humidity (%)
   - Device Class: `humidity`
   - State Class: `measurement`
   - Real-time updates via webhook
-  
+
 - **`sensor.{name}_target_temperature`** - Target temperature / setpoint (°C)
   - Device Class: `temperature`
   - State Class: `measurement`
@@ -47,11 +47,11 @@ Added **7 dedicated sensor entities** per thermostat for better integration and 
 - **`sensor.{name}_current_program`** - Active program name
   - Icon: `mdi:calendar-clock`
   - Values: Program names from API (e.g., "Risparmio", "At Home")
-  
+
 - **`sensor.{name}_mode`** - Operating mode
   - Icon: `mdi:thermostat`
   - Values: `automatic`, `manual`, `boost`, `off`
-  
+
 - **`sensor.{name}_status`** - Heating/cooling status
   - Icon: `mdi:power`
   - Values: `active`, `inactive`
@@ -77,7 +77,7 @@ Added **2 select entities** per thermostat:
 - **`select.bticino_{name}_{name}_program`** - Change active program
   - Options: Program names from API
   - Updates in real-time via webhook
-  
+
 - **`select.bticino_{name}_{name}_boost`** - Activate boost mode
   - Options: `off`, `30`, `60`, `90` (minutes)
   - Updates in real-time via webhook
@@ -253,7 +253,7 @@ Please test and report issues on GitHub:
    ```yaml
    # Old
    {{ state_attr('climate.sala', 'boost_time_remainig').minutes }}
-   
+
    # New
    {{ state_attr('climate.sala', 'boost_time_remaining').minutes }}
    # OR use the new sensor:
@@ -264,7 +264,7 @@ Please test and report issues on GitHub:
    ```yaml
    # Instead of:
    {{ state_attr('climate.sala', 'current_temperature') }}
-   
+
    # Use:
    {{ states('sensor.sala_temperature') }}
    ```
@@ -276,7 +276,7 @@ Please test and report issues on GitHub:
    data:
      entity_id: climate.sala
      program_number: 1
-   
+
    # New (select entity):
    service: select.select_option
    target:

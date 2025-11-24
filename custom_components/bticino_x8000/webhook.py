@@ -29,15 +29,27 @@ class BticinoX8000WebhookHandler:
         self, hass: HomeAssistant, webhook_id: str, request: Request
     ) -> Response:
         """Handle webhook."""
+        _LOGGER.info(
+            "🌐 WEBHOOK RECEIVED - webhook_id: %s, from: %s",
+            webhook_id,
+            request.remote,
+        )
         try:
             data = await request.json()
+            _LOGGER.info(
+                "📦 WEBHOOK DATA: %s",
+                data,
+            )
         except ValueError as err:
-            _LOGGER.error("Error in data: %s", err)
+            _LOGGER.error("❌ Error parsing webhook data: %s", err)
             data = {}
-        _LOGGER.debug("Got webhook with id: %s and data: %s", webhook_id, data)
 
         # Dispatch an event to update climate entities with webhook data
+        _LOGGER.info(
+            "📡 DISPATCHING webhook event to all entities (climate/select/sensor)"
+        )
         async_dispatcher_send(hass, f"{DOMAIN}_webhook_update", {"data": data})  # type: ignore
+        _LOGGER.debug("Webhook dispatch completed successfully")
         return Response(text="OK", status=200)
 
     async def async_register_webhook(self) -> None:

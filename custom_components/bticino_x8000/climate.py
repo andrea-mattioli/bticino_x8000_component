@@ -233,16 +233,25 @@ class BticinoX8000ClimateEntity(ClimateEntity):
     @callback
     def handle_webhook_update(self, event: dict[str, Any]) -> None:
         """Handle webhook updates."""
-        _LOGGER.debug("EVENT: %s", event["data"][0])
+        _LOGGER.info(
+            "🔔 WEBHOOK RECEIVED for climate %s - Full event: %s",
+            self._name,
+            event,
+        )
         data_list = event["data"]
 
-        _LOGGER.debug("Received data from webhook")
-
         if not data_list:
-            _LOGGER.warning("Received empty webhook update data")
+            _LOGGER.warning("❌ Climate %s: Received empty webhook update data", self._name)
             return
 
+        _LOGGER.debug("Climate %s: Parsing chronothermostats from webhook", self._name)
         chronothermostats = event["data"][0]["data"]["chronothermostats"]
+        _LOGGER.debug(
+            "Climate %s: Found %d chronothermostats in webhook",
+            self._name,
+            len(chronothermostats),
+        )
+        
         for chronothermostat_data in chronothermostats:
             plant_data = chronothermostat_data.get("sender", {}).get("plant", {})
             plant_id = plant_data.get("id")
@@ -297,6 +306,19 @@ class BticinoX8000ClimateEntity(ClimateEntity):
             self._set_point = float(set_point.get("value"))
             self._temperature = float(thermometer_data.get("value"))
             self._humidity = float(hygrometer_data.get("value"))
+            
+            _LOGGER.info(
+                "✅ Climate %s updated from webhook: temp=%s°C, humidity=%s%%, "
+                "target=%s°C, mode=%s, program=%s, status=%s",
+                self._name,
+                self._temperature,
+                self._humidity,
+                self._set_point,
+                self._mode,
+                self._program,
+                self._load_state,
+            )
+            
             # Trigger an update of the entity state
             self.async_write_ha_state()
 
@@ -559,8 +581,17 @@ class BticinoX8000ClimateEntity(ClimateEntity):
 
     async def async_sync_manual(self) -> None:
         """Force sync chronothermostat status."""
+        _LOGGER.info(
+            "🔄 Climate %s: Starting async_sync_manual() - Calling API...",
+            self._name,
+        )
         response = await self._bticino_api.get_chronothermostat_status(
             self._plant_id, self._topology_id
+        )
+        _LOGGER.debug(
+            "Climate %s: API response status_code=%s",
+            self._name,
+            response.get("status_code"),
         )
 
         if response["status_code"] == 200:
@@ -603,13 +634,33 @@ class BticinoX8000ClimateEntity(ClimateEntity):
             self._temperature = float(thermometer_data["value"])
             hygrometer_data = chronothermostat_data["hygrometer"]["measures"][0]
             self._humidity = float(hygrometer_data["value"])
+            
+            _LOGGER.info(
+                "✅ Climate %s: async_sync_manual() completed - temp=%s°C, "
+                "humidity=%s%%, target=%s°C, mode=%s, program=%s",
+                self._name,
+                self._temperature,
+                self._humidity,
+                self._set_point,
+                self._mode,
+                self._program,
+            )
+            
             self.async_write_ha_state()
-
+            
             # Notify sensors to update with the same data (no extra API call)
+            _LOGGER.info(
+                "📡 Climate %s: Dispatching webhook event to sensors/selects",
+                self._name,
+            )
             async_dispatcher_send(  # type: ignore[has-type]
                 self.hass,
                 f"{DOMAIN}_webhook_update",
                 {"data": [{"data": {"chronothermostats": [chronothermostat_data]}}]},
+            )
+            _LOGGER.debug(
+                "Climate %s: Webhook event dispatched successfully",
+                self._name,
             )
         else:
             _LOGGER.error(
