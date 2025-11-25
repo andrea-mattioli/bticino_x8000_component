@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "custom_components"))
 
 # Now import from the custom component
-from bticino_x8000.api import BticinoAPI  # noqa: E402
+from bticino_x8000.api import BticinoX8000Api  # noqa: E402
 
 
 async def check_subscription(
@@ -28,7 +28,7 @@ async def check_subscription(
     print()
 
     # Create API instance
-    api = BticinoAPI(
+    api = BticinoX8000Api(
         client_id="",  # Not needed for read-only operations
         client_secret="",
         subscription_key=subscription_key,
