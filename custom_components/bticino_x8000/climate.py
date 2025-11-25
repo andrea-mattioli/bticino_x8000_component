@@ -242,7 +242,9 @@ class BticinoX8000ClimateEntity(ClimateEntity):
         data_list = event["data"]
 
         if not data_list:
-            _LOGGER.warning("❌ Climate %s: Received empty webhook update data", self._name)
+            _LOGGER.warning(
+                "❌ Climate %s: Received empty webhook update data", self._name
+            )
             return
 
         _LOGGER.debug("Climate %s: Parsing chronothermostats from webhook", self._name)

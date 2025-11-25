@@ -212,7 +212,9 @@ class BticinoTemperatureSensor(BticinoBaseSensor):
                     continue
 
                 # Update temperature - READ FROM measures ARRAY like climate does
-                thermometer_data = chrono_data.get("thermometer", {}).get("measures", [{}])[0]
+                thermometer_data = chrono_data.get("thermometer", {}).get(
+                    "measures", [{}]
+                )[0]
                 if thermometer_data and "value" in thermometer_data:
                     self._attr_native_value = float(thermometer_data["value"])
                     self.schedule_update_ha_state()
@@ -261,13 +263,15 @@ class BticinoHumiditySensor(BticinoBaseSensor):
     def handle_webhook_update(self, event: dict[str, Any]) -> None:
         """Handle webhook updates for humidity."""
         _LOGGER.debug(
-            "Humidity sensor %s received webhook event",
-            self._thermostat_name
+            "Humidity sensor %s received webhook event", self._thermostat_name
         )
         try:
             data_list = event.get("data", [])
             if not data_list:
-                _LOGGER.debug("Humidity sensor %s: No data in webhook event", self._thermostat_name)
+                _LOGGER.debug(
+                    "Humidity sensor %s: No data in webhook event",
+                    self._thermostat_name,
+                )
                 return
 
             chronothermostats = (
@@ -283,7 +287,9 @@ class BticinoHumiditySensor(BticinoBaseSensor):
                     continue
 
                 # Update humidity - READ FROM measures ARRAY like climate does
-                hygrometer_data = chrono_data.get("hygrometer", {}).get("measures", [{}])[0]
+                hygrometer_data = chrono_data.get("hygrometer", {}).get(
+                    "measures", [{}]
+                )[0]
                 if hygrometer_data and "value" in hygrometer_data:
                     self._attr_native_value = float(hygrometer_data["value"])
                     self.schedule_update_ha_state()
@@ -331,8 +337,7 @@ class BticinoTargetTemperatureSensor(BticinoBaseSensor):
     def handle_webhook_update(self, event: dict[str, Any]) -> None:
         """Handle webhook updates for target temperature."""
         _LOGGER.debug(
-            "Target temperature sensor %s received webhook event",
-            self._thermostat_name
+            "Target temperature sensor %s received webhook event", self._thermostat_name
         )
         try:
             data_list = event.get("data", [])

@@ -272,7 +272,11 @@ class BticinoX8000Api:
             f"{THERMOSTAT_API_ENDPOINT}/chronothermostat/thermoregulation/"
             f"addressLocation{PLANTS}/{plant_id}/modules/parameter/id/value/{module_id}"
         )
-        _LOGGER.info("📡 API CALL: GET chronothermostat_status - plant=%s, module=%s", plant_id, module_id)
+        _LOGGER.info(
+            "📡 API CALL: GET chronothermostat_status - plant=%s, module=%s",
+            plant_id,
+            module_id,
+        )
         async with aiohttp.ClientSession() as session:
             try:
                 async with session.get(url, headers=self.header) as response:
