@@ -108,22 +108,25 @@ async def main():
         return
 
     subscription_key = input(
-        "Enter your subscription_key (from config_entries, default: f38af44bf1e8488188165be61a4c7ad7): "
+        "Enter your subscription_key (from config_entries): "
     ).strip()
     if not subscription_key:
-        subscription_key = "f38af44bf1e8488188165be61a4c7ad7"
+        print("❌ Subscription key is required")
+        return
 
     subscription_id = input(
-        "Enter the subscription_id to check (default: cacf4105-83ca-4471-9e5a-1cf0c7f5c0c8): "
+        "Enter the subscription_id to check (from config_entries): "
     ).strip()
     if not subscription_id:
-        subscription_id = "cacf4105-83ca-4471-9e5a-1cf0c7f5c0c8"
+        print("❌ Subscription ID is required")
+        return
 
     plant_id = input(
-        "Enter your plant_id (default: f1160185-b7a4-7b71-e053-27182d0a110d): "
+        "Enter your plant_id (from config_entries): "
     ).strip()
     if not plant_id:
-        plant_id = "f1160185-b7a4-7b71-e053-27182d0a110d"
+        print("❌ Plant ID is required")
+        return
 
     print()
 
