@@ -70,6 +70,7 @@ class BticinoBoostSelect(SelectEntity):  # pylint: disable=too-many-instance-att
     """Select entity for boost control."""
 
     _attr_has_entity_name = True
+    _attr_should_poll = False  # NO POLLING! Updates via webhook only
 
     def __init__(  # pylint: disable=too-many-arguments
         self,
@@ -321,6 +322,7 @@ class BticinoProgramSelect(
     """Select entity for thermostat program."""
 
     _attr_has_entity_name = True
+    _attr_should_poll = False  # NO POLLING! Updates via webhook only
 
     def __init__(  # pylint: disable=too-many-arguments
         self,

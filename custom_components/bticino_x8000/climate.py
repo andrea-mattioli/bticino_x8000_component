@@ -70,6 +70,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
     _attr_hvac_mode = HVACMode.AUTO
     _attr_max_temp = DEFAULT_MAX_TEMP
     _attr_min_temp = DEFAULT_MIN_TEMP
+    _attr_should_poll = False  # NO POLLING! Updates via webhook only
     _custom_attributes: dict[str, Any] = {}
 
     def __init__(
@@ -251,7 +252,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
             self._name,
             len(chronothermostats),
         )
-        
+
         for chronothermostat_data in chronothermostats:
             plant_data = chronothermostat_data.get("sender", {}).get("plant", {})
             plant_id = plant_data.get("id")
@@ -306,7 +307,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
             self._set_point = float(set_point.get("value"))
             self._temperature = float(thermometer_data.get("value"))
             self._humidity = float(hygrometer_data.get("value"))
-            
+
             _LOGGER.info(
                 "✅ Climate %s updated from webhook: temp=%s°C, humidity=%s%%, "
                 "target=%s°C, mode=%s, program=%s, status=%s",
@@ -318,7 +319,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
                 self._program,
                 self._load_state,
             )
-            
+
             # Trigger an update of the entity state
             self.async_write_ha_state()
 
@@ -634,7 +635,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
             self._temperature = float(thermometer_data["value"])
             hygrometer_data = chronothermostat_data["hygrometer"]["measures"][0]
             self._humidity = float(hygrometer_data["value"])
-            
+
             _LOGGER.info(
                 "✅ Climate %s: async_sync_manual() completed - temp=%s°C, "
                 "humidity=%s%%, target=%s°C, mode=%s, program=%s",
@@ -645,9 +646,9 @@ class BticinoX8000ClimateEntity(ClimateEntity):
                 self._mode,
                 self._program,
             )
-            
+
             self.async_write_ha_state()
-            
+
             # Notify sensors to update with the same data (no extra API call)
             _LOGGER.info(
                 "📡 Climate %s: Dispatching webhook event to sensors/selects",
