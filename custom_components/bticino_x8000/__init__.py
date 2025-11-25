@@ -101,7 +101,7 @@ async def async_setup_entry(  # pylint: disable=too-many-statements
                                     endpoint,
                                 )
 
-                                delete_response = await bticino_api.delete_subscribe_c2c_notifications(
+                                delete_response = await bticino_api.delete_subscribe_c2c_notifications(  # pylint: disable=line-too-long
                                     plant_id, sub_id
                                 )
 
