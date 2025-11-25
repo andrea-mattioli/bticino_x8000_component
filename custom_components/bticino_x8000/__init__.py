@@ -252,7 +252,9 @@ async def async_setup_entry(  # pylint: disable=too-many-statements
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+async def async_unload_entry(  # pylint: disable=too-many-locals
+    hass: HomeAssistant, config_entry: ConfigEntry
+) -> bool:
     """Unload Entry and cleanup ALL C2C subscriptions for this integration."""
     data = dict(config_entry.data)
     bticino_api = BticinoX8000Api(data)
