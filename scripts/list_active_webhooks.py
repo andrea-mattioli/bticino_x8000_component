@@ -14,8 +14,8 @@ from pathlib import Path
 
 # Add Home Assistant to path if running in HA environment
 try:
-    from homeassistant.core import HomeAssistant
     from homeassistant.components import webhook
+    from homeassistant.core import HomeAssistant
 except ImportError:
     print("❌ Error: This script must be run from within Home Assistant environment")
     print("   Try running: ha core exec python3 /config/list_active_webhooks.py")

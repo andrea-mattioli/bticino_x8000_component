@@ -72,5 +72,7 @@ class BticinoX8000WebhookHandler:
         except Exception as e:  # pylint: disable=broad-exception-caught
             _LOGGER.error(
                 "❌ Failed to unregister webhook %s: %s",
-                self.webhook_id, e, exc_info=True
+                self.webhook_id,
+                e,
+                exc_info=True,
             )
