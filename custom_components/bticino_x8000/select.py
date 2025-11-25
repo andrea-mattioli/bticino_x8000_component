@@ -98,7 +98,7 @@ class BticinoBoostSelect(SelectEntity):  # pylint: disable=too-many-instance-att
         """Return device info to link with climate entity."""
         return DeviceInfo(
             identifiers={(DOMAIN, self._topology_id)},
-            name=f"Bticino {self._thermostat_name}",
+            name=self._thermostat_name,  # Just "Sala", not "Bticino Sala"
             manufacturer="Legrand",
             model="X8000",
         )
@@ -355,7 +355,7 @@ class BticinoProgramSelect(
         """Return device info to link with climate entity."""
         return DeviceInfo(
             identifiers={(DOMAIN, self._topology_id)},
-            name=f"Bticino {self._thermostat_name}",
+            name=self._thermostat_name,  # Just "Sala", not "Bticino Sala"
             manufacturer="Legrand",
             model="X8000",
         )

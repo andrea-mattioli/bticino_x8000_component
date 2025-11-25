@@ -133,7 +133,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
         """Return device info to link with other entities."""
         return DeviceInfo(
             identifiers={(DOMAIN, self._topology_id)},
-            name=f"Bticino {self._name}",
+            name=self._name,  # Just "Sala", not "Bticino Sala"
             manufacturer="Legrand",
             model="X8000",
         )
