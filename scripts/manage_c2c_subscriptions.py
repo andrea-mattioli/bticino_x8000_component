@@ -42,7 +42,7 @@ async def list_and_manage_subscriptions(
         return
 
     all_subscriptions = response.get("data", [])
-    
+
     if not all_subscriptions:
         print("✅ No C2C subscriptions found on the server.")
         return
@@ -54,11 +54,11 @@ async def list_and_manage_subscriptions(
         sub_id = sub.get("subscriptionId")
         endpoint = sub.get("EndPointUrl", "N/A")
         plant_id = sub.get("plantId", "N/A")
-        
+
         # Determine if it's a Home Assistant subscription
         is_ha = "/api/webhook/" in endpoint
         marker = "🏠 [Home Assistant]" if is_ha else "🔗 [Other App]"
-        
+
         print(f"{idx}. {marker}")
         print(f"   Subscription ID: {sub_id}")
         print(f"   Plant ID: {plant_id}")
@@ -72,7 +72,7 @@ async def list_and_manage_subscriptions(
     print("   - Enter 'all' to delete ALL Home Assistant subscriptions")
     print("   - Enter 'q' to quit without deleting")
     print("=" * 70)
-    
+
     choice = input("\nYour choice: ").strip().lower()
 
     if choice == 'q':
@@ -111,7 +111,7 @@ async def list_and_manage_subscriptions(
     print("\n⚠️  You are about to delete:")
     for idx, sub in to_delete:
         print(f"   {idx}. {sub.get('subscriptionId')} ({sub.get('EndPointUrl', 'N/A')})")
-    
+
     confirm = input("\nAre you sure? (yes/no): ").strip().lower()
     if confirm != 'yes':
         print("👋 Deletion cancelled.")
@@ -122,13 +122,13 @@ async def list_and_manage_subscriptions(
     for idx, sub in to_delete:
         sub_id = sub.get("subscriptionId")
         plant_id = sub.get("plantId")
-        
+
         print(f"🗑️  Deleting subscription {idx}: {sub_id}...")
-        
+
         delete_response = await api.delete_subscribe_c2c_notifications(
             plant_id, sub_id
         )
-        
+
         if delete_response.get("status_code") == 200:
             print(f"   ✅ Deleted successfully")
         else:

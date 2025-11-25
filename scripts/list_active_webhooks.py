@@ -28,11 +28,11 @@ async def list_active_webhooks():
     print("🔍 ACTIVE WEBHOOKS IN HOME ASSISTANT")
     print("=" * 70)
     print()
-    
+
     # Access the webhook registry
     # Note: This requires access to the internal Home Assistant webhook registry
     # which is stored in hass.data[webhook.DOMAIN]
-    
+
     print("⚠️  This script needs to be run from within Home Assistant's Python context.")
     print("   Active webhooks are stored in memory and not easily accessible from outside.")
     print()
@@ -51,30 +51,30 @@ async def list_active_webhooks():
 async def compare_webhooks():
     """Compare config_entries webhooks with what we expect to be active."""
     import json
-    
+
     config_file = Path("/config/.storage/core.config_entries")
     if not config_file.exists():
         print("❌ Config entries file not found")
         return
-    
+
     with open(config_file) as f:
         config = json.load(f)
-    
+
     print("=" * 70)
     print("📋 WEBHOOKS FROM CONFIG_ENTRIES")
     print("=" * 70)
     print()
-    
+
     webhooks_by_domain = {}
-    
+
     for entry in config["data"]["entries"]:
         domain = entry.get("domain")
         entry_id = entry.get("entry_id")
         title = entry.get("title", "N/A")
         disabled = entry.get("disabled_by") is not None
-        
+
         entry_data = entry.get("data", {})
-        
+
         # Check for direct webhook_id
         if "webhook_id" in entry_data:
             webhook_id = entry_data["webhook_id"]
@@ -86,7 +86,7 @@ async def compare_webhooks():
                 "entry_id": entry_id,
                 "disabled": disabled,
             })
-        
+
         # Check for nested webhook_ids (like bticino)
         if "selected_thermostats" in entry_data:
             for plant in entry_data["selected_thermostats"]:
@@ -102,7 +102,7 @@ async def compare_webhooks():
                             "plant_id": plant_id,
                             "disabled": disabled,
                         })
-    
+
     for domain, webhooks in sorted(webhooks_by_domain.items()):
         print(f"🏠 Domain: {domain}")
         for wh in webhooks:
@@ -115,7 +115,7 @@ async def compare_webhooks():
             if "plant_id" in wh:
                 print(f"   Plant ID: {wh['plant_id']}")
             print()
-    
+
     print("=" * 70)
     print(f"📊 SUMMARY: {sum(len(w) for w in webhooks_by_domain.values())} webhook(s) in config_entries")
     print("=" * 70)
@@ -123,4 +123,3 @@ async def compare_webhooks():
 
 if __name__ == "__main__":
     asyncio.run(compare_webhooks())
-
