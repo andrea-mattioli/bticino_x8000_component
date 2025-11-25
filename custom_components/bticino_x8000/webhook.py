@@ -65,5 +65,12 @@ class BticinoX8000WebhookHandler:
 
     async def async_remove_webhook(self) -> None:
         """Remove the webhook."""
-        _LOGGER.debug("Unregister webhook with id: %s ", self.webhook_id)
-        webhook_unregister(self.hass, self.webhook_id)
+        _LOGGER.info("🗑️  Unregistering webhook: %s", self.webhook_id)
+        try:
+            webhook_unregister(self.hass, self.webhook_id)
+            _LOGGER.info("✅ Webhook unregistered successfully: %s", self.webhook_id)
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            _LOGGER.error(
+                "❌ Failed to unregister webhook %s: %s",
+                self.webhook_id, e, exc_info=True
+            )
