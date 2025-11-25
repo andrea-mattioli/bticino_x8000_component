@@ -8,10 +8,11 @@ import asyncio
 import sys
 from pathlib import Path
 
-# Add the custom_components directory to the path
+# Add the custom_components directory to the path FIRST
 sys.path.insert(0, str(Path(__file__).parent.parent / "custom_components"))
 
-from bticino_x8000.api import BticinoAPI
+# Now import from the custom component
+from bticino_x8000.api import BticinoX8000Api  # noqa: E402
 
 
 async def check_subscription(
@@ -27,7 +28,7 @@ async def check_subscription(
     print()
 
     # Create API instance
-    api = BticinoAPI(
+    api = BticinoX8000Api(
         client_id="",  # Not needed for read-only operations
         client_secret="",
         subscription_key=subscription_key,
@@ -107,22 +108,25 @@ async def main():
         return
 
     subscription_key = input(
-        "Enter your subscription_key (from config_entries, default: f38af44bf1e8488188165be61a4c7ad7): "
+        "Enter your subscription_key (from config_entries): "
     ).strip()
     if not subscription_key:
-        subscription_key = "f38af44bf1e8488188165be61a4c7ad7"
+        print("❌ Subscription key is required")
+        return
 
     subscription_id = input(
-        "Enter the subscription_id to check (default: cacf4105-83ca-4471-9e5a-1cf0c7f5c0c8): "
+        "Enter the subscription_id to check (from config_entries): "
     ).strip()
     if not subscription_id:
-        subscription_id = "cacf4105-83ca-4471-9e5a-1cf0c7f5c0c8"
+        print("❌ Subscription ID is required")
+        return
 
     plant_id = input(
-        "Enter your plant_id (default: f1160185-b7a4-7b71-e053-27182d0a110d): "
+        "Enter your plant_id (from config_entries): "
     ).strip()
     if not plant_id:
-        plant_id = "f1160185-b7a4-7b71-e053-27182d0a110d"
+        print("❌ Plant ID is required")
+        return
 
     print()
 
@@ -136,4 +140,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-

@@ -219,7 +219,7 @@ class BticinoTemperatureSensor(BticinoBaseSensor):
                     self._attr_native_value = float(thermometer_data["value"])
                     self.schedule_update_ha_state()
                     _LOGGER.info(
-                        "✅ Temperature sensor updated for %s: %s°C",
+                        "Temperature sensor updated for %s: %s°C",
                         self._thermostat_name,
                         self._attr_native_value,
                     )
@@ -294,7 +294,7 @@ class BticinoHumiditySensor(BticinoBaseSensor):
                     self._attr_native_value = float(hygrometer_data["value"])
                     self.schedule_update_ha_state()
                     _LOGGER.info(
-                        "✅ Humidity sensor updated for %s: %s%%",
+                        "Humidity sensor updated for %s: %s%%",
                         self._thermostat_name,
                         self._attr_native_value,
                     )
@@ -361,7 +361,7 @@ class BticinoTargetTemperatureSensor(BticinoBaseSensor):
                     self._attr_native_value = float(set_point["value"])
                     self.schedule_update_ha_state()
                     _LOGGER.info(
-                        "✅ Target temperature sensor updated for %s: %s°C",
+                        "Target temperature sensor updated for %s: %s°C",
                         self._thermostat_name,
                         self._attr_native_value,
                     )

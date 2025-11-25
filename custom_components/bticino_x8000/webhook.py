@@ -30,23 +30,23 @@ class BticinoX8000WebhookHandler:
     ) -> Response:
         """Handle webhook."""
         _LOGGER.info(
-            "🌐 WEBHOOK RECEIVED - webhook_id: %s, from: %s",
+            "WEBHOOK RECEIVED - webhook_id: %s, from: %s",
             webhook_id,
             request.remote,
         )
         try:
             data = await request.json()
             _LOGGER.info(
-                "📦 WEBHOOK DATA: %s",
+                "WEBHOOK DATA: %s",
                 data,
             )
         except ValueError as err:
-            _LOGGER.error("❌ Error parsing webhook data: %s", err)
+            _LOGGER.error("Error parsing webhook data: %s", err)
             data = {}
 
         # Dispatch an event to update climate entities with webhook data
         _LOGGER.info(
-            "📡 DISPATCHING webhook event to all entities (climate/select/sensor)"
+            "DISPATCHING webhook event to all entities (climate/select/sensor)"
         )
         async_dispatcher_send(hass, f"{DOMAIN}_webhook_update", {"data": data})  # type: ignore
         _LOGGER.debug("Webhook dispatch completed successfully")
@@ -65,5 +65,14 @@ class BticinoX8000WebhookHandler:
 
     async def async_remove_webhook(self) -> None:
         """Remove the webhook."""
-        _LOGGER.debug("Unregister webhook with id: %s ", self.webhook_id)
-        webhook_unregister(self.hass, self.webhook_id)
+        _LOGGER.info("Unregistering webhook: %s", self.webhook_id)
+        try:
+            webhook_unregister(self.hass, self.webhook_id)
+            _LOGGER.info("Webhook unregistered successfully: %s", self.webhook_id)
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            _LOGGER.error(
+                "Failed to unregister webhook %s: %s",
+                self.webhook_id,
+                e,
+                exc_info=True,
+            )

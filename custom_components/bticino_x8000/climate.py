@@ -235,7 +235,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
     def handle_webhook_update(self, event: dict[str, Any]) -> None:
         """Handle webhook updates."""
         _LOGGER.info(
-            "🔔 WEBHOOK RECEIVED for climate %s - Full event: %s",
+            "WEBHOOK RECEIVED for climate %s - Full event: %s",
             self._name,
             event,
         )
@@ -243,7 +243,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
 
         if not data_list:
             _LOGGER.warning(
-                "❌ Climate %s: Received empty webhook update data", self._name
+                "Climate %s: Received empty webhook update data", self._name
             )
             return
 
@@ -311,7 +311,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
             self._humidity = float(hygrometer_data.get("value"))
 
             _LOGGER.info(
-                "✅ Climate %s updated from webhook: temp=%s°C, humidity=%s%%, "
+                "Climate %s updated from webhook: temp=%s°C, humidity=%s%%, "
                 "target=%s°C, mode=%s, program=%s, status=%s",
                 self._name,
                 self._temperature,
@@ -591,7 +591,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
     async def async_sync_manual(self) -> None:
         """Force sync chronothermostat status."""
         _LOGGER.info(
-            "🔄 Climate %s: Starting async_sync_manual() - Calling API...",
+            "Climate %s: Starting async_sync_manual() - Calling API...",
             self._name,
         )
         response = await self._bticino_api.get_chronothermostat_status(
@@ -645,7 +645,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
             self._humidity = float(hygrometer_data["value"])
 
             _LOGGER.info(
-                "✅ Climate %s: async_sync_manual() completed - temp=%s°C, "
+                "Climate %s: async_sync_manual() completed - temp=%s°C, "
                 "humidity=%s%%, target=%s°C, mode=%s, program=%s",
                 self._name,
                 self._temperature,
@@ -659,7 +659,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
 
             # Notify sensors to update with the same data (no extra API call)
             _LOGGER.info(
-                "📡 Climate %s: Dispatching webhook event to sensors/selects",
+                "Climate %s: Dispatching webhook event to sensors/selects",
                 self._name,
             )
             async_dispatcher_send(  # type: ignore[has-type]
