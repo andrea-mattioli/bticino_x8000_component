@@ -253,25 +253,88 @@ async def async_setup_entry(  # pylint: disable=too-many-statements
 
 
 async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
-    """Unload Entry."""
+    """Unload Entry and cleanup ALL C2C subscriptions for this integration."""
     data = dict(config_entry.data)
     bticino_api = BticinoX8000Api(data)
     await hass.config_entries.async_unload_platforms(config_entry, PLATFORMS)
+    
+    external_url = data.get("external_url", "")
+    
     for plant_data in data["selected_thermostats"]:
         plant_id = list(plant_data.keys())[0]
         plant_data = list(plant_data.values())[0]
         webhook_id = plant_data.get("webhook_id")
         subscription_id = plant_data.get("subscription_id")
-        response = await bticino_api.delete_subscribe_c2c_notifications(
-            plant_id, subscription_id
+        
+        _LOGGER.info(
+            "🧹 Cleaning up C2C subscriptions for plant %s during addon removal...",
+            plant_id
         )
-        if response["status_code"] == 200:
-            _LOGGER.info("Webhook subscription rimossa con successo!")
-        else:
+        
+        # Get all subscriptions for this plant
+        try:
+            subscriptions_response = await bticino_api.get_subscriptions_c2c_notifications()
+            
+            if subscriptions_response.get("status_code") == 200:
+                all_subscriptions = subscriptions_response.get("data", [])
+                
+                # Filter for ALL Home Assistant subscriptions (current and orphaned)
+                ha_subscriptions = [
+                    sub for sub in all_subscriptions
+                    if sub.get("plantId") == plant_id 
+                    and "/api/webhook/" in sub.get("EndPointUrl", "")
+                    and external_url in sub.get("EndPointUrl", "")
+                ]
+                
+                _LOGGER.info(
+                    "Found %d Home Assistant subscription(s) to delete for plant %s",
+                    len(ha_subscriptions), plant_id
+                )
+                
+                # Delete ALL HA subscriptions for this plant
+                for sub in ha_subscriptions:
+                    sub_id = sub.get("subscriptionId")
+                    endpoint = sub.get("EndPointUrl", "")
+                    
+                    _LOGGER.debug(
+                        "🗑️  Deleting subscription: %s (endpoint: %s)",
+                        sub_id, endpoint
+                    )
+                    
+                    delete_response = await bticino_api.delete_subscribe_c2c_notifications(
+                        plant_id, sub_id
+                    )
+                    
+                    if delete_response.get("status_code") == 200:
+                        _LOGGER.info("✅ Deleted subscription: %s", sub_id)
+                    else:
+                        _LOGGER.error(
+                            "❌ Failed to delete subscription %s: %s",
+                            sub_id, delete_response
+                        )
+            else:
+                _LOGGER.warning(
+                    "Could not fetch subscriptions for cleanup: %s",
+                    subscriptions_response
+                )
+                
+                # Fallback: try to delete the known subscription_id
+                if subscription_id:
+                    response = await bticino_api.delete_subscribe_c2c_notifications(
+                        plant_id, subscription_id
+                    )
+                    if response.get("status_code") == 200:
+                        _LOGGER.info("✅ Deleted current subscription: %s", subscription_id)
+        
+        except Exception as e:  # pylint: disable=broad-exception-caught
             _LOGGER.error(
-                "Errore durante la rimozione della webhook subscription: %s", response
+                "Error during subscription cleanup: %s", e, exc_info=True
             )
 
+        # Remove webhook
         webhook_handler = BticinoX8000WebhookHandler(hass, webhook_id)
         await webhook_handler.async_remove_webhook()
+        _LOGGER.info("🗑️  Webhook %s removed", webhook_id)
+    
+    _LOGGER.info("✅ Bticino X8000 addon unloaded and cleaned up successfully")
     return True
