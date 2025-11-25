@@ -89,7 +89,7 @@ class BticinoBoostSelect(SelectEntity):  # pylint: disable=too-many-instance-att
 
         self._attr_options = ["off", "30", "60", "90"]
         self._attr_name = f"{thermostat_name} Boost"
-        self._attr_icon = "mdi:fire"
+        self._attr_icon = "mdi:play-speed"
         self._attr_unique_id = f"{DOMAIN}_{topology_id}_boost"
         self._attr_current_option = "off"  # Default: sarà aggiornato da async_update
 
