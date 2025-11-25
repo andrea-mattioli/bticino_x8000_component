@@ -27,8 +27,10 @@ async def async_setup_entry(  # pylint: disable=too-many-statements
     bticino_api = BticinoX8000Api(data)
     hass.data.setdefault(DOMAIN, {})
 
-    async def add_c2c_subscription(plant_id: str, webhook_id: str) -> str | None:
-        """Subscribe C2C."""
+    async def add_c2c_subscription(  # pylint: disable=too-many-branches,too-many-nested-blocks
+        plant_id: str, webhook_id: str
+    ) -> str | None:
+        """Subscribe C2C with automatic cleanup of orphaned subscriptions."""
         if bticino_api is not None:
             webhook_path = "/api/webhook/"
             webhook_endpoint = data["external_url"] + webhook_path + webhook_id
@@ -48,20 +50,123 @@ async def async_setup_entry(  # pylint: disable=too-many-statements
                 )
 
                 if response["status_code"] == 201:
-                    _LOGGER.debug(
-                        "add_c2c_subscription - Webhook subscription successful for plant: %s",
+                    _LOGGER.info(
+                        "✅ C2C subscription created successfully for plant: %s, "
+                        "subscription_id: %s",
                         plant_id,
+                        response["text"]["subscriptionId"],
                     )
                     subscription_id: str = response["text"]["subscriptionId"]
                     return subscription_id
 
-                _LOGGER.error(
-                    "add_c2c_subscription - Failed to subscribe C2C. "
-                    "plant_id: %s, status: %s, response: %s",
-                    plant_id,
-                    response.get("status_code"),
-                    response,
-                )
+                # Handle 409 Conflict - subscription already exists
+                if response["status_code"] == 409:
+                    _LOGGER.warning(
+                        "⚠️ C2C subscription conflict (409) for plant %s. "
+                        "Attempting automatic cleanup of orphaned subscriptions...",
+                        plant_id,
+                    )
+
+                    # Get all existing subscriptions
+                    subscriptions_response = (
+                        await bticino_api.get_subscriptions_c2c_notifications()
+                    )
+
+                    if subscriptions_response.get("status_code") == 200:
+                        all_subscriptions = subscriptions_response.get("data", [])
+
+                        # Filter Home Assistant subscriptions for this plant
+                        ha_subscriptions = [
+                            sub
+                            for sub in all_subscriptions
+                            if sub.get("plantId") == plant_id
+                            and "/api/webhook/" in sub.get("EndPointUrl", "")
+                        ]
+
+                        if ha_subscriptions:
+                            _LOGGER.info(
+                                "🔍 Found %d Home Assistant subscription(s) for plant %s",
+                                len(ha_subscriptions),
+                                plant_id,
+                            )
+
+                            # Delete all HA subscriptions for this plant
+                            # (we'll recreate the correct one after)
+                            for sub in ha_subscriptions:
+                                sub_id = sub.get("subscriptionId")
+                                endpoint = sub.get("EndPointUrl", "")
+                                _LOGGER.debug(
+                                    "🗑️  Deleting orphaned subscription: %s (endpoint: %s)",
+                                    sub_id,
+                                    endpoint,
+                                )
+
+                                delete_response = (
+                                    await bticino_api.delete_subscribe_c2c_notifications(
+                                        plant_id, sub_id
+                                    )
+                                )
+
+                                if delete_response.get("status_code") == 200:
+                                    _LOGGER.info(
+                                        "✅ Deleted orphaned subscription: %s", sub_id
+                                    )
+                                else:
+                                    _LOGGER.warning(
+                                        "⚠️ Failed to delete subscription %s: %s",
+                                        sub_id,
+                                        delete_response,
+                                    )
+
+                            # Retry subscription after cleanup
+                            _LOGGER.info(
+                                "🔄 Retrying C2C subscription after cleanup for plant %s...",
+                                plant_id,
+                            )
+
+                            retry_response = (
+                                await bticino_api.set_subscribe_c2c_notifications(
+                                    plant_id, {"EndPointUrl": webhook_endpoint}
+                                )
+                            )
+
+                            if retry_response.get("status_code") == 201:
+                                subscription_id = retry_response["text"][
+                                    "subscriptionId"
+                                ]
+                                _LOGGER.info(
+                                    "✅ C2C subscription created after cleanup: %s",
+                                    subscription_id,
+                                )
+                                return subscription_id
+
+                            _LOGGER.error(
+                                "❌ Failed to create subscription after cleanup. "
+                                "plant_id: %s, status: %s, response: %s",
+                                plant_id,
+                                retry_response.get("status_code"),
+                                retry_response,
+                            )
+                        else:
+                            _LOGGER.warning(
+                                "No Home Assistant subscriptions found for cleanup. "
+                                "409 conflict may be from another source."
+                            )
+                    else:
+                        _LOGGER.error(
+                            "Failed to get subscriptions for cleanup: %s",
+                            subscriptions_response,
+                        )
+
+                # Log other errors
+                if response["status_code"] != 409:
+                    _LOGGER.error(
+                        "add_c2c_subscription - Failed to subscribe C2C. "
+                        "plant_id: %s, status: %s, response: %s",
+                        plant_id,
+                        response.get("status_code"),
+                        response,
+                    )
             except Exception as e:  # pylint: disable=broad-exception-caught
                 _LOGGER.error(
                     "add_c2c_subscription - Exception during C2C subscription. "
