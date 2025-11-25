@@ -252,7 +252,7 @@ async def async_setup_entry(  # pylint: disable=too-many-statements
     return True
 
 
-async def async_unload_entry(  # pylint: disable=too-many-locals
+async def async_unload_entry(  # pylint: disable=too-many-locals,too-many-branches
     hass: HomeAssistant, config_entry: ConfigEntry
 ) -> bool:
     """Unload Entry and cleanup ALL C2C subscriptions for this integration."""
@@ -302,6 +302,13 @@ async def async_unload_entry(  # pylint: disable=too-many-locals
                     sub_id = sub.get("subscriptionId")
                     endpoint = sub.get("EndPointUrl", "")
 
+                    if not sub_id:
+                        _LOGGER.warning(
+                            "Skipping subscription with missing ID (endpoint: %s)",
+                            endpoint,
+                        )
+                        continue
+
                     _LOGGER.debug(
                         "Deleting subscription: %s (endpoint: %s)", sub_id, endpoint
                     )
@@ -312,12 +319,25 @@ async def async_unload_entry(  # pylint: disable=too-many-locals
                         )
                     )
 
-                    if delete_response.get("status_code") == 200:
+                    status = delete_response.get("status_code")
+                    if status == 200:
                         _LOGGER.info("Deleted subscription: %s", sub_id)
+                    elif status == 404:
+                        _LOGGER.warning(
+                            "Subscription %s not found (already deleted?)", sub_id
+                        )
+                    elif status == 400:
+                        _LOGGER.error(
+                            "Bad request deleting subscription %s - "
+                            "Invalid subscription_id or plant_id? Response: %s",
+                            sub_id,
+                            delete_response,
+                        )
                     else:
                         _LOGGER.error(
-                            "Failed to delete subscription %s: %s",
+                            "Failed to delete subscription %s (status %s): %s",
                             sub_id,
+                            status,
                             delete_response,
                         )
             else:
@@ -327,14 +347,29 @@ async def async_unload_entry(  # pylint: disable=too-many-locals
                 )
 
                 # Fallback: try to delete the known subscription_id
-                if subscription_id:
+                if subscription_id and subscription_id != "None":
+                    _LOGGER.info(
+                        "Attempting fallback deletion of known subscription_id: %s",
+                        subscription_id,
+                    )
                     response = await bticino_api.delete_subscribe_c2c_notifications(
                         plant_id, subscription_id
                     )
-                    if response.get("status_code") == 200:
+                    status = response.get("status_code")
+                    if status == 200:
                         _LOGGER.info(
                             "Deleted current subscription: %s", subscription_id
                         )
+                    else:
+                        _LOGGER.warning(
+                            "Fallback deletion failed (status %s): %s",
+                            status,
+                            response,
+                        )
+                else:
+                    _LOGGER.warning(
+                        "No valid subscription_id to delete in fallback"
+                    )
 
         except Exception as e:  # pylint: disable=broad-exception-caught
             _LOGGER.error("Error during subscription cleanup: %s", e, exc_info=True)

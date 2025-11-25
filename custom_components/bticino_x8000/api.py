@@ -500,10 +500,26 @@ class BticinoX8000Api:
         self, plant_id: str, subscription_id: str
     ) -> dict[str, Any]:
         """Remove C2C subscriptions."""
+        if not subscription_id or subscription_id == "None":
+            _LOGGER.error(
+                "Cannot delete subscription: subscription_id is empty or None"
+            )
+            return {
+                "status_code": 400,
+                "error": "Invalid subscription_id (empty or None)",
+            }
+
         url = (
             f"{DEFAULT_API_BASE_URL}"
             f"{THERMOSTAT_API_ENDPOINT}"
             f"{PLANTS}/{plant_id}/subscription/{subscription_id}"
+        )
+
+        _LOGGER.debug(
+            "DELETE C2C subscription - URL: %s, plant_id: %s, subscription_id: %s",
+            url,
+            plant_id,
+            subscription_id,
         )
 
         async with aiohttp.ClientSession() as session:
@@ -511,6 +527,13 @@ class BticinoX8000Api:
                 async with session.delete(url, headers=self.header) as response:
                     status_code = response.status
                     content = await response.text()
+
+                    _LOGGER.debug(
+                        "DELETE C2C response - Status: %s, Content: %s",
+                        status_code,
+                        content[:200] if content else "empty",
+                    )
+
                     if status_code == 401:
                         # Retry the request on 401 Unauthorized
                         if await self.handle_unauthorized_error(response):
@@ -521,6 +544,11 @@ class BticinoX8000Api:
 
                     return {"status_code": status_code, "text": content}
             except aiohttp.ClientError as e:
+                _LOGGER.error(
+                    "HTTP error during delete_subscribe_c2c_notifications: %s",
+                    e,
+                    exc_info=True,
+                )
                 return {
                     "status_code": 500,
                     "error": f"Error during delete_subscribe_C2C_notifications request: {e}",
