@@ -141,7 +141,7 @@ class BticinoBaseSensor(SensorEntity):
         """Return device info to link with climate entity."""
         return DeviceInfo(
             identifiers={(DOMAIN, self._topology_id)},
-            name=self._thermostat_name,  # Just "Sala", not "Bticino Sala"
+            name=self._thermostat_name,
             manufacturer="Legrand",
             model="X8000",
         )

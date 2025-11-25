@@ -1,0 +1,5 @@
+[MESSAGES CONTROL]
+# Disable R0917 (too-many-positional-arguments) for pylint 3.1.0 compatibility
+# This warning is only available in pylint 3.1.0+, but it conflicts with our code structure
+disable=R0917
+
