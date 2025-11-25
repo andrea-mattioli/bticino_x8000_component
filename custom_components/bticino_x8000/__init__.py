@@ -101,8 +101,10 @@ async def async_setup_entry(  # pylint: disable=too-many-statements
                                     endpoint,
                                 )
 
-                                delete_response = await bticino_api.delete_subscribe_c2c_notifications(
-                                    plant_id, sub_id
+                                delete_response = (
+                                    await bticino_api.delete_subscribe_c2c_notifications(
+                                        plant_id, sub_id
+                                    )
                                 )
 
                                 if delete_response.get("status_code") == 200:
