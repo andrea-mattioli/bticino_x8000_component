@@ -157,16 +157,20 @@ class BticinoC2CManager:
     def is_homeassistant_subscription(endpoint_url: str) -> bool:
         """Check if subscription belongs to Home Assistant addon."""
         # Home Assistant webhook URLs contain "/api/webhook/"
+        if not endpoint_url:
+            return False
         return "/api/webhook/" in endpoint_url
 
     @staticmethod
     def format_datetime(dt_str: str) -> str:
         """Format datetime string for display."""
+        if not dt_str:
+            return "N/A"
         try:
             dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
             return dt.strftime("%Y-%m-%d %H:%M:%S")
         except Exception:
-            return dt_str
+            return dt_str or "N/A"
 
 
 async def interactive_cleanup():
@@ -214,7 +218,12 @@ async def interactive_cleanup():
         print(f"❌ Failed to get subscriptions: {subscriptions_response}")
         return
 
-    all_subscriptions = subscriptions_response.get("data", {}).get("subscriptions", [])
+    # Handle both list and dict responses
+    subscriptions_data = subscriptions_response.get("data", [])
+    if isinstance(subscriptions_data, list):
+        all_subscriptions = subscriptions_data
+    else:
+        all_subscriptions = subscriptions_data.get("subscriptions", [])
 
     if not all_subscriptions:
         print("✅ No active C2C subscriptions found. Nothing to cleanup!")
@@ -228,7 +237,7 @@ async def interactive_cleanup():
     other_subscriptions = []
 
     for sub in all_subscriptions:
-        if manager.is_homeassistant_subscription(sub.get("endPointUrl", "")):
+        if manager.is_homeassistant_subscription(sub.get("EndPointUrl", "")):
             ha_subscriptions.append(sub)
         else:
             other_subscriptions.append(sub)
@@ -242,8 +251,8 @@ async def interactive_cleanup():
             sub_id = sub.get("subscriptionId", "unknown")
             plant_id = sub.get("plantId", "unknown")
             plant_name = plant_lookup.get(plant_id, f"Unknown ({plant_id})")
-            endpoint = sub.get("endPointUrl", "unknown")
-            created = manager.format_datetime(sub.get("createdOn", "unknown"))
+            endpoint = sub.get("EndPointUrl", "unknown")
+            created = manager.format_datetime(sub.get("createdOn", ""))
 
             print(f"\n[{idx}] Subscription ID: {sub_id}")
             print(f"    Plant: {plant_name}")
@@ -260,8 +269,8 @@ async def interactive_cleanup():
             sub_id = sub.get("subscriptionId", "unknown")
             plant_id = sub.get("plantId", "unknown")
             plant_name = plant_lookup.get(plant_id, f"Unknown ({plant_id})")
-            endpoint = sub.get("endPointUrl", "unknown")
-            created = manager.format_datetime(sub.get("createdOn", "unknown"))
+            endpoint = sub.get("EndPointUrl", "unknown")
+            created = manager.format_datetime(sub.get("createdOn", ""))
 
             print(f"\n[{idx}] Subscription ID: {sub_id}")
             print(f"    Plant: {plant_name}")
@@ -311,7 +320,7 @@ async def interactive_cleanup():
                 sub_id = sub.get("subscriptionId")
                 plant_id = sub.get("plantId")
                 plant_name = plant_lookup.get(plant_id, plant_id)
-                endpoint = sub.get("endPointUrl", "")
+                endpoint = sub.get("EndPointUrl", "")
 
                 print(f"\n[{idx}/{len(ha_subscriptions)}]")
                 print(f"Subscription ID: {sub_id}")
