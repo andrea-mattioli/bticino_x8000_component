@@ -353,6 +353,9 @@ class BticinoX8000ClimateEntity(ClimateEntity):
                 "setPoint": {"value": self._set_point, "unit": self.temperature_unit},
                 "programs": [{"number": self._program_number[0]["number"]}],
             }
+        else:
+            _LOGGER.error("Invalid hvac_mode: %s", hvac_mode)
+            return
         response = await self._bticino_api.set_chronothermostat_status(
             self._plant_id, self._topology_id, payload
         )
@@ -447,6 +450,9 @@ class BticinoX8000ClimateEntity(ClimateEntity):
                 "activationTime": now_timestamp + "/" + boost_90,
                 "setPoint": {"value": set_pont, "unit": self.temperature_unit},
             }
+        else:
+            _LOGGER.error("Invalid boost_time: %s (must be 30, 60, or 90)", boost_time)
+            return
         response = await self._bticino_api.set_chronothermostat_status(
             self._plant_id, self._topology_id, payload
         )

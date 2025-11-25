@@ -141,7 +141,7 @@ class BticinoBaseSensor(SensorEntity):
         """Return device info to link with climate entity."""
         return DeviceInfo(
             identifiers={(DOMAIN, self._topology_id)},
-            name=self._thermostat_name,  # Just "Sala", not "Bticino Sala"
+            name=self._thermostat_name,
             manufacturer="Legrand",
             model="X8000",
         )
@@ -380,7 +380,7 @@ class BticinoProgramSensor(BticinoBaseSensor):
 
     _attr_icon = "mdi:calendar-clock"
 
-    def __init__(  # pylint: disable=too-many-arguments
+    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         data: dict[str, Any],
         plant_id: str,
