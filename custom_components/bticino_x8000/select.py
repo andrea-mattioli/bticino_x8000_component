@@ -88,7 +88,7 @@ class BticinoBoostSelect(SelectEntity):  # pylint: disable=too-many-instance-att
         self._programs = programs
 
         self._attr_options = ["off", "30", "60", "90"]
-        self._attr_name = f"{thermostat_name} Boost"
+        self._attr_name = "Boost"  # Device name added automatically by has_entity_name
         self._attr_icon = "mdi:play-speed"
         self._attr_unique_id = f"{DOMAIN}_{topology_id}_boost"
         self._attr_current_option = "off"  # Default: sarà aggiornato da async_update
@@ -341,7 +341,7 @@ class BticinoProgramSelect(
 
         # Crea lista opzioni dai nomi dei programmi
         self._attr_options = [prog["name"] for prog in programs]
-        self._attr_name = f"{thermostat_name} Program"
+        self._attr_name = "Program"  # Device name added automatically by has_entity_name
         self._attr_icon = "mdi:calendar-clock"
         self._attr_unique_id = f"{DOMAIN}_{topology_id}_program"
 
