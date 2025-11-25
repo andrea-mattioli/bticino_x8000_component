@@ -8,10 +8,11 @@ import asyncio
 import sys
 from pathlib import Path
 
-# Add the custom_components directory to the path
+# Add the custom_components directory to the path FIRST
 sys.path.insert(0, str(Path(__file__).parent.parent / "custom_components"))
 
-from bticino_x8000.api import BticinoAPI
+# Now import from the custom component
+from bticino_x8000.api import BticinoAPI  # noqa: E402
 
 
 async def check_subscription(
@@ -136,4 +137,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
