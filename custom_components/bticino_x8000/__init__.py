@@ -367,9 +367,7 @@ async def async_unload_entry(  # pylint: disable=too-many-locals,too-many-branch
                             response,
                         )
                 else:
-                    _LOGGER.warning(
-                        "No valid subscription_id to delete in fallback"
-                    )
+                    _LOGGER.warning("No valid subscription_id to delete in fallback")
 
         except Exception as e:  # pylint: disable=broad-exception-caught
             _LOGGER.error("Error during subscription cleanup: %s", e, exc_info=True)
