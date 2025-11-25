@@ -1,0 +1,5 @@
+[MESSAGES CONTROL]
+# Disable too-many-positional-arguments for pylint 3.1.0 compatibility
+# This warning is only available in pylint 3.1.0+, but it conflicts with our code structure
+disable=too-many-positional-arguments
+

@@ -71,7 +71,7 @@ class BticinoBoostSelect(SelectEntity):  # pylint: disable=too-many-instance-att
 
     _attr_should_poll = False  # NO POLLING! Updates via webhook only
 
-    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         data: dict[str, Any],
         plant_id: str,
