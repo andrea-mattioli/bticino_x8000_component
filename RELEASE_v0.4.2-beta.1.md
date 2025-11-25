@@ -17,11 +17,13 @@ Added **7 dedicated sensor entities** per thermostat for better integration and 
 #### Temperature & Humidity Sensors
 
 - **`sensor.{name}_temperature`** - Current room temperature (°C)
+
   - Device Class: `temperature`
   - State Class: `measurement`
   - Real-time updates via webhook
 
 - **`sensor.{name}_humidity`** - Current room humidity (%)
+
   - Device Class: `humidity`
   - State Class: `measurement`
   - Real-time updates via webhook
@@ -34,11 +36,13 @@ Added **7 dedicated sensor entities** per thermostat for better integration and 
 #### Program & Mode Sensors
 
 - **`sensor.{name}_current_program`** - Active program name
+
   - Icon: `mdi:calendar-clock`
   - Values: Program names from API (e.g., "Risparmio", "At Home")
   - Real-time updates via webhook
 
 - **`sensor.{name}_mode`** - Operating mode
+
   - Icon: `mdi:thermostat`
   - Values: `automatic`, `manual`, `boost`, `protection`, `off`
 
@@ -55,6 +59,7 @@ Added **7 dedicated sensor entities** per thermostat for better integration and 
   - Value: Minutes remaining (0 if boost not active)
 
 **Benefits:**
+
 - ✅ No additional API calls (updates via webhook)
 - ✅ Proper device classes for automatic UI handling
 - ✅ Historical data tracking in Home Assistant
@@ -67,6 +72,7 @@ Added **7 dedicated sensor entities** per thermostat for better integration and 
 Added **2 select entities** per thermostat for easy control:
 
 - **`select.{name}_program`** - Change active program
+
   - Icon: `mdi:calendar-clock`
   - Options: Program names dynamically loaded from API
   - Updates in real-time via webhook
@@ -94,17 +100,20 @@ Added **2 select entities** per thermostat for easy control:
 **This was the #1 cause of API rate limiting errors!**
 
 **Problem:**
+
 - Select entities had `async_update()` methods WITHOUT `should_poll = False`
 - Home Assistant was polling every 30 seconds by default
 - 2 select entities × 2 updates/minute = **4 API calls/minute**
 - **240 API calls/hour** → immediate rate limiting (429 errors)
 
 **Fix:**
+
 - Added `_attr_should_poll = False` to all entities (climate, select, sensor)
 - Removed `update_before_add=True` from select entity setup
 - **Result**: Zero automatic polling, zero automatic API calls ✅
 
 **Impact:**
+
 - Reduced API calls from **~240/hour** to **~2 at startup** 🎯
 - Users should no longer experience `429 Out of call volume quota` errors
 - Component can be restarted frequently without hitting rate limits
@@ -112,89 +121,107 @@ Added **2 select entities** per thermostat for easy control:
 ### Fixed Temperature & Humidity Sensor Readings
 
 **Problem:**
+
 - Sensors were trying to read temperature/humidity from wrong data structure
 - Values showing as "Unknown" or not updating
 
 **Fix:**
+
 - Corrected data path to `chronothermostat_data["thermometer"]["measures"][0]["value"]`
 - Corrected humidity path to `chronothermostat_data["hygrometer"]["measures"][0]["value"]`
 - Added proper error handling for missing data
 
 **Impact:**
+
 - Temperature and humidity sensors now display correct values ✅
 
 ### Fixed Program Sensor Not Updating
 
 **Problem:**
+
 - API returns `"programs": [{"number": 1}]` (only the program number)
 - Sensor was looking for `"program": {"name": "..."}` (non-existent)
 - Program sensor always showed "Unknown"
 
 **Fix:**
+
 - Added `_get_program_name()` method to look up program name from number
 - Sensor now correctly extracts program number from API response
 - Performs lookup against stored programs list to get readable name
 
 **Impact:**
+
 - Program sensor now shows correct program name (e.g., "Risparmio") ✅
 
 ### Fixed Entity ID Duplication
 
 **Problem:**
+
 - Select entities had entity_ids like: `select.bticino_sala_sala_boost` ❌
 - Device name + `has_entity_name=True` + entity name caused duplication
 
 **Fix:**
+
 - Removed `_attr_has_entity_name = True` from select entities
 - Simplified device name from `"Bticino {name}"` to `"{name}"`
 - Entity names now correctly set to `"{name} Boost"` and `"{name} Program"`
 
 **Impact:**
+
 - Entity IDs are now clean: `select.sala_boost`, `select.sala_program` ✅
 - **Note:** Users need to remove and re-add integration to see new entity IDs
 
 ### Fixed Thread-Safety Errors
 
 **Problem:**
+
 - `RuntimeError: async_write_ha_state() called from wrong thread`
 - Webhook handlers calling `async_write_ha_state()` from SyncWorker threads
 
 **Fix:**
+
 - Changed all `async_write_ha_state()` to `schedule_update_ha_state()`
 - Applied to: climate, select, and sensor entities
 
 **Impact:**
+
 - No more thread-safety warnings or crashes ✅
 
 ### Fixed KeyError on Missing Chronothermostats
 
 **Problem:**
+
 - API sometimes returns responses without `"chronothermostats"` key
 - Component crashed with `KeyError: 'chronothermostats'`
 
 **Fix:**
+
 - Added checks for key existence before accessing
 - Wrapped API response parsing in try-except blocks
 - Setup continues for other thermostats even if one fails
 - Better error logging for debugging
 
 **Impact:**
+
 - Component no longer crashes on unexpected API responses ✅
 
 ### Improved Token Refresh Logic
 
 **Problem:**
+
 - Token refresh on fixed 1-hour interval
 - Could expire between refresh cycles
 - No retry on failure
 
 **Fix:**
+
 - **Proactive refresh**: Now refreshes 5 minutes before expiration
 - Dynamically scheduled based on `access_token_expires_on` from API
 - Added retry logic (retries after 5 minutes on failure)
 - Better error handling to prevent component crash
 
 **Impact:**
+
 - More reliable authentication ✅
 - Fewer 401 Unauthorized errors
 
@@ -227,6 +254,7 @@ Added extensive debug logging with emoji indicators throughout the component:
 - 📊 **Setup Flow**: Plant discovery, topology fetch, program loading
 
 **Enable debug logging:**
+
 ```yaml
 logger:
   default: info
@@ -235,6 +263,7 @@ logger:
 ```
 
 **Example debug output:**
+
 ```
 🔑 TOKEN UPDATE INVOKED at 2025-11-25 11:21:45
 📡 API CALL: GET chronothermostat_status
@@ -265,11 +294,13 @@ logger:
 ### API Call Optimization
 
 **Before v0.4.2:**
+
 - Component startup: ~50 API calls
 - Automatic polling: **240 API calls/hour** ⚠️
 - Risk of hitting rate limits immediately
 
 **After v0.4.2:**
+
 - Component startup: **~2 API calls** (token + get status)
 - Automatic polling: **0 API calls/hour** ✅
 - Sensor updates: **0 additional API calls**
@@ -293,12 +324,14 @@ logger:
 ### Entity Updates Flow
 
 **At Startup:**
+
 1. Climate entity calls `get_chronothermostat_status` (1 API call)
 2. Climate entity dispatches data to sensors/selects via internal event system
 3. All sensors and selects populate with initial values
 4. **Total: 1 API call for all 13 entities**
 
 **During Operation (Real-time):**
+
 1. Bticino cloud sends webhook to Home Assistant
 2. Webhook handler dispatches event to climate entity
 3. Climate entity updates and broadcasts to sensors/selects
@@ -306,6 +339,7 @@ logger:
 5. **Total: 0 API calls**
 
 **User Actions (e.g., changing program):**
+
 1. User changes select option
 2. Select entity calls API to set new program (1 API call)
 3. Bticino cloud sends webhook confirmation
@@ -403,6 +437,7 @@ Instead of reading attributes from climate entity, use dedicated sensors:
 ```
 
 **Benefits of using sensors:**
+
 - Historical data tracking
 - Proper device classes
 - Easier to use in automations
@@ -448,12 +483,14 @@ data:
 - New: `select.sala_boost` ✅
 
 **To get new entity IDs:**
+
 1. Remove the Bticino X8000 integration from Home Assistant
 2. Restart Home Assistant
 3. Re-add the integration
 4. Update any automations/scripts using the old entity IDs
 
 **Find and replace in your configuration:**
+
 ```yaml
 # Find: select.bticino_sala_sala_boost
 # Replace: select.sala_boost
@@ -510,6 +547,7 @@ logger:
 ```
 
 Look for `📡 API CALL:` lines in logs. You should see:
+
 - 1-2 calls at startup
 - 1 call per user action (program change, boost, etc.)
 - 0 automatic/scheduled calls
@@ -542,6 +580,7 @@ entities:
 ### Automation Examples
 
 **Example 1: Notify when boost ends**
+
 ```yaml
 automation:
   - alias: "Notify when heating boost ends"
@@ -549,7 +588,7 @@ automation:
       - platform: state
         entity_id: sensor.sala_boost_time_remaining
         to: "0"
-        from: 
+        from:
     condition:
       - condition: template
         value_template: "{{ trigger.from_state.state != '0' }}"
@@ -560,6 +599,7 @@ automation:
 ```
 
 **Example 2: Auto-switch to economy at night**
+
 ```yaml
 automation:
   - alias: "Economy mode at night"
@@ -581,4 +621,3 @@ automation:
 **🍻 Like my work and want to support me? 🍻**
 
 <a href="http://paypal.me/mattiols" target="_blank"><img src="https://www.paypalobjects.com/webstatic/mktg/logo/pp_cc_mark_37x23.jpg"></a>
-
