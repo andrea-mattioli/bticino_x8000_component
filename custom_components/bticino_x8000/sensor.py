@@ -380,8 +380,7 @@ class BticinoProgramSensor(BticinoBaseSensor):
 
     _attr_icon = "mdi:calendar-clock"
 
-    # pylint: disable=too-many-arguments,too-many-positional-arguments
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         data: dict[str, Any],
         plant_id: str,
