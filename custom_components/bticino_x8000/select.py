@@ -69,7 +69,7 @@ async def async_setup_entry(
 class BticinoBoostSelect(SelectEntity):  # pylint: disable=too-many-instance-attributes
     """Select entity for boost control."""
 
-    _attr_has_entity_name = True
+    _attr_should_poll = False  # NO POLLING! Updates via webhook only
 
     def __init__(  # pylint: disable=too-many-arguments
         self,
@@ -88,7 +88,7 @@ class BticinoBoostSelect(SelectEntity):  # pylint: disable=too-many-instance-att
 
         self._attr_options = ["off", "30", "60", "90"]
         self._attr_name = f"{thermostat_name} Boost"
-        self._attr_icon = "mdi:fire"
+        self._attr_icon = "mdi:play-speed"
         self._attr_unique_id = f"{DOMAIN}_{topology_id}_boost"
         self._attr_current_option = "off"  # Default: sarà aggiornato da async_update
 
@@ -97,7 +97,7 @@ class BticinoBoostSelect(SelectEntity):  # pylint: disable=too-many-instance-att
         """Return device info to link with climate entity."""
         return DeviceInfo(
             identifiers={(DOMAIN, self._topology_id)},
-            name=f"Bticino {self._thermostat_name}",
+            name=self._thermostat_name,  # Just "Sala", not "Bticino Sala"
             manufacturer="Legrand",
             model="X8000",
         )
@@ -320,7 +320,7 @@ class BticinoProgramSelect(
 ):  # pylint: disable=too-many-instance-attributes
     """Select entity for thermostat program."""
 
-    _attr_has_entity_name = True
+    _attr_should_poll = False  # NO POLLING! Updates via webhook only
 
     def __init__(  # pylint: disable=too-many-arguments
         self,
@@ -353,7 +353,7 @@ class BticinoProgramSelect(
         """Return device info to link with climate entity."""
         return DeviceInfo(
             identifiers={(DOMAIN, self._topology_id)},
-            name=f"Bticino {self._thermostat_name}",
+            name=self._thermostat_name,  # Just "Sala", not "Bticino Sala"
             manufacturer="Legrand",
             model="X8000",
         )

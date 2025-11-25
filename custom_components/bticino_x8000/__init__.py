@@ -88,27 +88,32 @@ async def async_setup_entry(  # pylint: disable=too-many-statements
             # Refresh 5 minutes before expiration (300 seconds buffer)
             delay_seconds = max(time_until_expiry - 300, 60)
 
-            _LOGGER.debug(
-                "schedule_token_refresh - Token expires in %.1f minutes. "
-                "Scheduling refresh in %.1f minutes",
+            _LOGGER.info(
+                "⏰ TOKEN REFRESH SCHEDULED - Expires in %.1f min, "
+                "will refresh in %.1f min (at %s)",
                 time_until_expiry / 60,
                 delay_seconds / 60,
+                dt_util.now() + dt_util.dt.timedelta(seconds=delay_seconds),
             )
 
         # Schedule the next refresh
         async_call_later(hass, delay_seconds, update_token)
+        _LOGGER.debug("schedule_token_refresh - async_call_later configured")
 
     async def update_token(now: dt_util.dt.datetime | None = None) -> None:
         """Refresh access token and schedule next refresh."""
-        _LOGGER.debug("update_token - Refreshing access token at: %s", now)
+        _LOGGER.info(
+            "🔑 TOKEN UPDATE INVOKED at %s - Starting token refresh...",
+            now or dt_util.now(),
+        )
         try:
             (
                 access_token,
                 refresh_token,
                 access_token_expires_on,
             ) = await refresh_access_token(data)
-            _LOGGER.debug(
-                "update_token - Token refresh successful. Expires on: %s",
+            _LOGGER.info(
+                "✅ TOKEN REFRESH SUCCESSFUL - New token expires on: %s",
                 access_token_expires_on,
             )
             data["access_token"] = access_token

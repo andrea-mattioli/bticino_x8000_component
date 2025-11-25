@@ -83,14 +83,15 @@ class BticinoX8000Api:
     async def get_plants(self) -> dict[str, Any]:
         """Retrieve thermostat plants."""
         url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}{PLANTS}"
+        _LOGGER.info("📡 API CALL: GET %s", url)
         async with aiohttp.ClientSession() as session:
             try:
                 async with session.get(url, headers=self.header) as response:
                     status_code = response.status
                     content = await response.text()
 
-                    _LOGGER.debug(
-                        "get_plants - status_code: %s, content preview: %s",
+                    _LOGGER.info(
+                        "✅ API RESPONSE: GET plants - status=%s, content preview: %s",
                         status_code,
                         content[:200],
                     )
@@ -271,11 +272,22 @@ class BticinoX8000Api:
             f"{THERMOSTAT_API_ENDPOINT}/chronothermostat/thermoregulation/"
             f"addressLocation{PLANTS}/{plant_id}/modules/parameter/id/value/{module_id}"
         )
+        _LOGGER.info(
+            "📡 API CALL: GET chronothermostat_status - plant=%s, module=%s",
+            plant_id,
+            module_id,
+        )
         async with aiohttp.ClientSession() as session:
             try:
                 async with session.get(url, headers=self.header) as response:
                     status_code = response.status
                     content = await response.text()
+                    _LOGGER.info(
+                        "✅ API RESPONSE: GET chronothermostat_status - "
+                        "status=%s, content preview: %s",
+                        status_code,
+                        content[:300] if len(content) > 300 else content,
+                    )
                     if status_code == 401:
                         # Retry the request on 401 Unauthorized
                         if await self.handle_unauthorized_error(response):
