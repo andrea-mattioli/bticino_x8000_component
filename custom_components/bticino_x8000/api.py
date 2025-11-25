@@ -283,7 +283,8 @@ class BticinoX8000Api:
                     status_code = response.status
                     content = await response.text()
                     _LOGGER.info(
-                        "✅ API RESPONSE: GET chronothermostat_status - status=%s, content preview: %s",
+                        "✅ API RESPONSE: GET chronothermostat_status - "
+                        "status=%s, content preview: %s",
                         status_code,
                         content[:300] if len(content) > 300 else content,
                     )
