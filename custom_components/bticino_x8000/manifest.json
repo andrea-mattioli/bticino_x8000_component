@@ -1,8 +1,9 @@
 {
   "domain": "bticino_x8000",
-  "name": "Bticino X8000",
+  "name": "Bticino X8000 (Optimized)",
   "codeowners": [
-    "@andrea-mattioli"
+    "@andrea-mattioli",
+    "@fuzzybear62"
   ],
   "config_flow": true,
   "dependencies": [],
@@ -10,5 +11,5 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/andrea-mattioli/bticino_x8000_component/issues",
   "requirements": [],
-  "version": "0.4.4-beta.1"
+  "version": "1.0.0rc1"
 }
