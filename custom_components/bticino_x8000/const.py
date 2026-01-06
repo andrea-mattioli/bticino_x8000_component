@@ -8,6 +8,11 @@ DEFAULT_REDIRECT_URI: str = "https://my.home-assistant.io/"
 CLIENT_ID = ""
 CLIENT_SECRET = ""
 SUBSCRIPTION_KEY = ""
+
+# Temperature Defaults
+DEFAULT_MIN_TEMP = 7
+DEFAULT_MAX_TEMP = 40
+
 ################################
 # Do not change! Will be set by release workflow
 INTEGRATION_VERSION = "main"  # git tag will be used

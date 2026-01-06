@@ -4,7 +4,8 @@ import logging
 import time
 from typing import Any
 
-import aiohttp
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import dt as dt_util
 
 from .const import AUTH_REQ_ENDPOINT, DEFAULT_AUTH_BASE_URL
@@ -12,10 +13,10 @@ from .const import AUTH_REQ_ENDPOINT, DEFAULT_AUTH_BASE_URL
 _LOGGER = logging.getLogger(__name__)
 
 
-async def exchange_code_for_tokens(  # pylint: disable=too-many-locals
-    client_id: str, client_secret: str, code: str
+async def exchange_code_for_tokens(
+    hass: HomeAssistant, client_id: str, client_secret: str, code: str
 ) -> tuple[str, Any, Any]:
-    """Get access token from authorization code."""
+    """Get access token from authorization code using HA shared session."""
     token_url = f"{DEFAULT_AUTH_BASE_URL}{AUTH_REQ_ENDPOINT}"
     payload = {
         "code": code,
@@ -26,7 +27,10 @@ async def exchange_code_for_tokens(  # pylint: disable=too-many-locals
 
     _LOGGER.debug("exchange_code_for_tokens - Requesting token from: %s", token_url)
 
-    async with aiohttp.ClientSession() as session:
+    # FIX: Uso della sessione condivisa (Best Practice HA)
+    session = async_get_clientsession(hass)
+    
+    try:
         async with session.post(token_url, data=payload) as response:
             status_code = response.status
             _LOGGER.debug("exchange_code_for_tokens - Response status: %s", status_code)
@@ -40,7 +44,7 @@ async def exchange_code_for_tokens(  # pylint: disable=too-many-locals
                     content,
                 )
                 raise ValueError(
-                    f"Failed to exchange code for tokens. HTTP {status_code}: {content}"
+                    f"Failed to exchange code for tokens. Status: {status_code}"
                 )
 
             try:
@@ -48,45 +52,38 @@ async def exchange_code_for_tokens(  # pylint: disable=too-many-locals
             except Exception as e:
                 content = await response.text()
                 _LOGGER.error(
-                    "exchange_code_for_tokens - Failed to parse JSON response: %s. Content: %s",
+                    "exchange_code_for_tokens - Failed to parse JSON: %s. Content: %s",
                     e,
                     content,
                     exc_info=True,
                 )
                 raise ValueError(f"Invalid JSON response from auth server: {e}") from e
 
+    except Exception as e:
+        _LOGGER.error("exchange_code_for_tokens - Network/Session error: %s", e)
+        raise
+
+    # FIX CODE REVIEW: Controllo simmetrico esistenza access_token
     if not token_data.get("access_token"):
         _LOGGER.error(
-            "exchange_code_for_tokens - Missing access_token in response: %s",
-            token_data,
+            "exchange_code_for_tokens - Missing access_token in response: %s", token_data
         )
-        raise ValueError("Missing access_token in auth response")
+        raise ValueError("Missing access_token in token exchange response")
 
     access_token = "Bearer " + token_data.get("access_token")
     refresh_token = token_data.get("refresh_token")
-
-    # Gestione robusta della scadenza
-    expires_on = token_data.get("expires_on")
     expires_in = token_data.get("expires_in")
-
-    if expires_on:
-        expires_ts = int(expires_on)
-    elif expires_in:
-        expires_ts = int(time.time()) + int(expires_in)
-    else:
-        _LOGGER.warning("Missing 'expires_in' or 'expires_on' in token response.")
-        expires_ts = int(time.time()) + 3600  # default fallback
-
+    
+    expires_ts = int(time.time()) + int(expires_in) if expires_in else int(time.time()) + 3600
     access_token_expires_on = dt_util.utc_from_timestamp(expires_ts)
-
-    _LOGGER.debug("Access token expires on: %s", access_token_expires_on.isoformat())
-    _LOGGER.debug("Token data keys: %s", list(token_data.keys()))
 
     return access_token, refresh_token, access_token_expires_on
 
 
-async def refresh_access_token(data: dict[str, Any]) -> tuple[str, Any, Any]:
-    """Refresh access token using refresh token."""
+async def refresh_access_token(
+    hass: HomeAssistant, data: dict[str, Any]
+) -> tuple[str, Any, Any]:
+    """Refresh access token using HA shared session."""
     token_url = f"{DEFAULT_AUTH_BASE_URL}{AUTH_REQ_ENDPOINT}"
     payload = {
         "refresh_token": data["refresh_token"],
@@ -97,7 +94,10 @@ async def refresh_access_token(data: dict[str, Any]) -> tuple[str, Any, Any]:
 
     _LOGGER.debug("refresh_access_token - Requesting token refresh from: %s", token_url)
 
-    async with aiohttp.ClientSession() as session:
+    # FIX: Uso della sessione condivisa
+    session = async_get_clientsession(hass)
+
+    try:
         async with session.post(token_url, data=payload) as response:
             status_code = response.status
             _LOGGER.debug("refresh_access_token - Response status: %s", status_code)
@@ -105,14 +105,11 @@ async def refresh_access_token(data: dict[str, Any]) -> tuple[str, Any, Any]:
             if status_code != 200:
                 content = await response.text()
                 _LOGGER.error(
-                    "refresh_access_token - Token refresh failed. "
-                    "Status: %s, Response: %s",
+                    "refresh_access_token - Refresh failed. Status: %s, Response: %s",
                     status_code,
                     content,
                 )
-                raise ValueError(
-                    f"Failed to refresh access token. HTTP {status_code}: {content}"
-                )
+                raise ValueError(f"Failed to refresh token. Status: {status_code}")
 
             try:
                 token_data = await response.json()
@@ -126,6 +123,10 @@ async def refresh_access_token(data: dict[str, Any]) -> tuple[str, Any, Any]:
                 )
                 raise ValueError(f"Invalid JSON response from auth server: {e}") from e
 
+    except Exception as e:
+        _LOGGER.error("refresh_access_token - Network/Session error: %s", e)
+        raise
+
     if not token_data.get("access_token"):
         _LOGGER.error(
             "refresh_access_token - Missing access_token in response: %s", token_data
@@ -135,7 +136,6 @@ async def refresh_access_token(data: dict[str, Any]) -> tuple[str, Any, Any]:
     access_token = "Bearer " + token_data.get("access_token")
     refresh_token = token_data.get("refresh_token")
 
-    # Stessa logica di gestione scadenza
     expires_on = token_data.get("expires_on")
     expires_in = token_data.get("expires_in")
 
@@ -145,7 +145,7 @@ async def refresh_access_token(data: dict[str, Any]) -> tuple[str, Any, Any]:
         expires_ts = int(time.time()) + int(expires_in)
     else:
         _LOGGER.warning("Missing 'expires_in' or 'expires_on' in refresh response.")
-        expires_ts = int(time.time()) + 3600  # fallback
+        expires_ts = int(time.time()) + 3600
 
     access_token_expires_on = dt_util.utc_from_timestamp(expires_ts)
 

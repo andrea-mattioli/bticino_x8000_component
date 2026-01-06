@@ -1,381 +1,107 @@
-"""Init."""
+"""The Bticino X8000 integration."""
 
 import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.event import async_call_later
-from homeassistant.util import dt as dt_util
+# Importiamo l'eccezione corretta che blocca il loop di riavvio
+from homeassistant.exceptions import ConfigEntryNotReady
 
 from .api import BticinoX8000Api
-from .auth import refresh_access_token
-from .const import DOMAIN
+from .const import DOMAIN, WEBHOOK_ID
+from .coordinator import BticinoCoordinator
 from .webhook import BticinoX8000WebhookHandler
-
-PLATFORMS = [Platform.CLIMATE, Platform.SELECT, Platform.SENSOR]
 
 _LOGGER = logging.getLogger(__name__)
 
+PLATFORMS: list[Platform] = [Platform.CLIMATE, Platform.SENSOR, Platform.SELECT]
 
-async def async_setup_entry(  # pylint: disable=too-many-statements
-    hass: HomeAssistant,
-    config_entry: ConfigEntry,
-) -> bool:
-    """Set up the Bticino_X8000 component."""
-    data = dict(config_entry.data)
-    bticino_api = BticinoX8000Api(data)
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up Bticino X8000 from a config entry."""
+    
+    _LOGGER.info("Setting up Bticino X8000 integration with Optimized Core (Fix Boot Loop)")
+
+    # 1. Initialize API
+    api = BticinoX8000Api(hass, dict(entry.data))
+
+    # 2. Initialize Coordinator
+    coordinator = BticinoCoordinator(hass, api, entry)
+
+    # 3. First Refresh (Sequential) with Fault Tolerance
+    # CRITICAL FIX: We must catch ConfigEntryNotReady.
+    # The method async_config_entry_first_refresh() raises ConfigEntryNotReady 
+    # if the update fails. If we don't catch it, HA will retry setup endlessly.
+    try:
+        await coordinator.async_config_entry_first_refresh()
+    except ConfigEntryNotReady as ex:
+        # We allow the setup to finish even if the API is down/banned.
+        # This keeps the coordinator alive (with its 60 min timer) and prevents
+        # Home Assistant from restarting the integration every minute.
+        _LOGGER.warning(
+            "Initial setup failed (Rate Limit active). "
+            "Integration forced to load in 'Unavailable' state to maintain Cool Down timer. "
+            "Error: %s", 
+            ex
+        )
+
+    # 4. Store coordinator
     hass.data.setdefault(DOMAIN, {})
+    hass.data[DOMAIN][entry.entry_id] = coordinator
 
-    async def add_c2c_subscription(  # pylint: disable=too-many-branches,too-many-nested-blocks
-        plant_id: str, webhook_id: str
-    ) -> str | None:
-        """Subscribe C2C with automatic cleanup of orphaned subscriptions."""
-        if bticino_api is not None:
-            webhook_path = "/api/webhook/"
-            webhook_endpoint = data["external_url"] + webhook_path + webhook_id
-            _LOGGER.debug(
-                "add_c2c_subscription - Subscribing C2C for plant_id: %s, webhook: %s",
-                plant_id,
-                webhook_endpoint,
-            )
+    # 5. Register Webhook Handler (Home Assistant Side)
+    webhook_handler = BticinoX8000WebhookHandler(hass, WEBHOOK_ID)
+    await webhook_handler.async_register_webhook()
+
+    # 6. Subscribe to C2C Notifications (Legrand Side)
+    if "selected_thermostats" in entry.data:
+        plant_ids = set()
+        for plant_data in entry.data["selected_thermostats"]:
+            p_id = list(plant_data.keys())[0]
+            plant_ids.add(p_id)
+        
+        base_url = entry.data.get("external_url", "").rstrip("/")
+        webhook_url = f"{base_url}/api/webhook/{WEBHOOK_ID}"
+
+        _LOGGER.info("Registering C2C subscriptions for %s plants to URL: %s", len(plant_ids), webhook_url)
+
+        for plant_id in plant_ids:
             try:
-                response = await bticino_api.set_subscribe_c2c_notifications(
-                    plant_id, {"EndPointUrl": webhook_endpoint}
-                )
-                _LOGGER.debug(
-                    "add_c2c_subscription - Response for plant %s: %s",
-                    plant_id,
-                    response,
-                )
-
-                if response["status_code"] == 201:
-                    _LOGGER.info(
-                        "C2C subscription created successfully for plant: %s, "
-                        "subscription_id: %s",
-                        plant_id,
-                        response["text"]["subscriptionId"],
-                    )
-                    subscription_id: str = response["text"]["subscriptionId"]
-                    return subscription_id
-
-                # Handle 409 Conflict - subscription already exists
-                if response["status_code"] == 409:
-                    _LOGGER.warning(
-                        "C2C subscription conflict (409) for plant %s. "
-                        "Attempting automatic cleanup of orphaned subscriptions...",
-                        plant_id,
-                    )
-
-                    # Get all existing subscriptions
-                    subscriptions_response = (
-                        await bticino_api.get_subscriptions_c2c_notifications()
-                    )
-
-                    if subscriptions_response.get("status_code") == 200:
-                        all_subscriptions = subscriptions_response.get("data", [])
-
-                        # Filter Home Assistant subscriptions for this plant
-                        ha_subscriptions = [
-                            sub
-                            for sub in all_subscriptions
-                            if sub.get("plantId") == plant_id
-                            and "/api/webhook/" in sub.get("EndPointUrl", "")
-                        ]
-
-                        if ha_subscriptions:
-                            _LOGGER.info(
-                                "Found %d Home Assistant subscription(s) for plant %s",
-                                len(ha_subscriptions),
-                                plant_id,
-                            )
-
-                            # Delete all HA subscriptions for this plant
-                            # (we'll recreate the correct one after)
-                            for sub in ha_subscriptions:
-                                sub_id = sub.get("subscriptionId")
-                                endpoint = sub.get("EndPointUrl", "")
-                                _LOGGER.debug(
-                                    "Deleting orphaned subscription: %s (endpoint: %s)",
-                                    sub_id,
-                                    endpoint,
-                                )
-
-                                delete_response = await bticino_api.delete_subscribe_c2c_notifications(  # pylint: disable=line-too-long
-                                    plant_id, sub_id
-                                )
-
-                                if delete_response.get("status_code") == 200:
-                                    _LOGGER.info(
-                                        "Deleted orphaned subscription: %s", sub_id
-                                    )
-                                else:
-                                    _LOGGER.warning(
-                                        "Failed to delete subscription %s: %s",
-                                        sub_id,
-                                        delete_response,
-                                    )
-
-                            # Retry subscription after cleanup
-                            _LOGGER.info(
-                                "Retrying C2C subscription after cleanup for plant %s...",
-                                plant_id,
-                            )
-
-                            retry_response = (
-                                await bticino_api.set_subscribe_c2c_notifications(
-                                    plant_id, {"EndPointUrl": webhook_endpoint}
-                                )
-                            )
-
-                            if retry_response.get("status_code") == 201:
-                                subscription_id = retry_response["text"][
-                                    "subscriptionId"
-                                ]
-                                _LOGGER.info(
-                                    "C2C subscription created after cleanup: %s",
-                                    subscription_id,
-                                )
-                                return subscription_id
-
-                            _LOGGER.error(
-                                "Failed to create subscription after cleanup. "
-                                "plant_id: %s, status: %s, response: %s",
-                                plant_id,
-                                retry_response.get("status_code"),
-                                retry_response,
-                            )
-                        else:
-                            _LOGGER.warning(
-                                "No Home Assistant subscriptions found for cleanup. "
-                                "409 conflict may be from another source."
-                            )
-                    else:
-                        _LOGGER.error(
-                            "Failed to get subscriptions for cleanup: %s",
-                            subscriptions_response,
-                        )
-
-                # Log other errors
-                if response["status_code"] != 409:
-                    _LOGGER.error(
-                        "add_c2c_subscription - Failed to subscribe C2C. "
-                        "plant_id: %s, status: %s, response: %s",
-                        plant_id,
-                        response.get("status_code"),
-                        response,
-                    )
-            except Exception as e:  # pylint: disable=broad-exception-caught
-                _LOGGER.error(
-                    "add_c2c_subscription - Exception during C2C subscription. "
-                    "plant_id: %s, error: %s",
-                    plant_id,
-                    e,
-                    exc_info=True,
-                )
-        return None
-
-    def schedule_token_refresh() -> None:
-        """Schedule the next token refresh based on expiration time."""
-        expires_on = data.get("access_token_expires_on")
-        if expires_on is None:
-            _LOGGER.warning(
-                "schedule_token_refresh - No expiration time found, using default 50 minutes"
-            )
-            delay_seconds = 3000  # 50 minutes fallback
-        else:
-            # Calculate time until expiration
-            now = dt_util.utcnow()
-            time_until_expiry = (expires_on - now).total_seconds()
-
-            # Refresh 5 minutes before expiration (300 seconds buffer)
-            delay_seconds = max(time_until_expiry - 300, 60)
-
-            _LOGGER.info(
-                "TOKEN REFRESH SCHEDULED - Expires in %.1f min, "
-                "will refresh in %.1f min (at %s)",
-                time_until_expiry / 60,
-                delay_seconds / 60,
-                dt_util.now() + dt_util.dt.timedelta(seconds=delay_seconds),
-            )
-
-        # Schedule the next refresh
-        async_call_later(hass, delay_seconds, update_token)
-        _LOGGER.debug("schedule_token_refresh - async_call_later configured")
-
-    async def update_token(now: dt_util.dt.datetime | None = None) -> None:
-        """Refresh access token and schedule next refresh."""
-        _LOGGER.info(
-            " TOKEN UPDATE INVOKED at %s - Starting token refresh...",
-            now or dt_util.now(),
-        )
-        try:
-            (
-                access_token,
-                refresh_token,
-                access_token_expires_on,
-            ) = await refresh_access_token(data)
-            _LOGGER.info(
-                "TOKEN REFRESH SUCCESSFUL - New token expires on: %s",
-                access_token_expires_on,
-            )
-            data["access_token"] = access_token
-            data["refresh_token"] = refresh_token
-            data["access_token_expires_on"] = access_token_expires_on
-            hass.config_entries.async_update_entry(config_entry, data=data)
-
-            # Schedule next refresh based on new expiration time
-            schedule_token_refresh()
-
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            _LOGGER.error(
-                "update_token - Failed to refresh access token: %s", e, exc_info=True
-            )
-            # Retry in 5 minutes on failure
-            _LOGGER.info("update_token - Retrying token refresh in 5 minutes")
-            async_call_later(hass, 300, update_token)
-
-    # Do initial token refresh at startup
-    await update_token(None)
-    for plant_data in data["selected_thermostats"]:
-        plant_id = list(plant_data.keys())[0]
-        plant_data = list(plant_data.values())[0]
-        webhook_id = plant_data.get("webhook_id")
-        subscription_id = await add_c2c_subscription(plant_id, webhook_id)
-        if subscription_id is not None:
-            plant_data["subscription_id"] = subscription_id
-        webhook_handler = BticinoX8000WebhookHandler(hass, webhook_id)
-        await webhook_handler.async_register_webhook()
-    hass.config_entries.async_update_entry(config_entry, data=data)
-    _LOGGER.debug("selected_thermostats: %s", data["selected_thermostats"])
-    await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
-    return True
-
-
-async def async_unload_entry(  # pylint: disable=too-many-locals,too-many-branches
-    hass: HomeAssistant, config_entry: ConfigEntry
-) -> bool:
-    """Unload Entry and cleanup ALL C2C subscriptions for this integration."""
-    data = dict(config_entry.data)
-    bticino_api = BticinoX8000Api(data)
-    await hass.config_entries.async_unload_platforms(config_entry, PLATFORMS)
-
-    external_url = data.get("external_url", "")
-
-    for plant_data in data["selected_thermostats"]:
-        plant_id = list(plant_data.keys())[0]
-        plant_data = list(plant_data.values())[0]
-        webhook_id = plant_data.get("webhook_id")
-        subscription_id = plant_data.get("subscription_id")
-
-        _LOGGER.info(
-            "Cleaning up C2C subscriptions for plant %s during addon removal...",
-            plant_id,
-        )
-
-        # Get all subscriptions for this plant
-        try:
-            subscriptions_response = (
-                await bticino_api.get_subscriptions_c2c_notifications()
-            )
-
-            if subscriptions_response.get("status_code") == 200:
-                all_subscriptions = subscriptions_response.get("data", [])
-
-                # Filter for ALL Home Assistant subscriptions (current and orphaned)
-                ha_subscriptions = [
-                    sub
-                    for sub in all_subscriptions
-                    if sub.get("plantId") == plant_id
-                    and "/api/webhook/" in sub.get("EndPointUrl", "")
-                    and external_url in sub.get("EndPointUrl", "")
-                ]
-
-                _LOGGER.info(
-                    "Found %d Home Assistant subscription(s) to delete for plant %s",
-                    len(ha_subscriptions),
-                    plant_id,
-                )
-
-                # Delete ALL HA subscriptions for this plant
-                for sub in ha_subscriptions:
-                    sub_id = sub.get("subscriptionId")
-                    endpoint = sub.get("EndPointUrl", "")
-
-                    if not sub_id:
-                        _LOGGER.warning(
-                            "Skipping subscription with missing ID (endpoint: %s)",
-                            endpoint,
-                        )
-                        continue
-
-                    _LOGGER.debug(
-                        "Deleting subscription: %s (endpoint: %s)", sub_id, endpoint
-                    )
-
-                    delete_response = (
-                        await bticino_api.delete_subscribe_c2c_notifications(
-                            plant_id, sub_id
-                        )
-                    )
-
-                    status = delete_response.get("status_code")
-                    if status == 200:
-                        _LOGGER.info("Deleted subscription: %s", sub_id)
-                    elif status == 404:
-                        _LOGGER.warning(
-                            "Subscription %s not found (already deleted?)", sub_id
-                        )
-                    elif status == 400:
-                        _LOGGER.error(
-                            "Bad request deleting subscription %s - "
-                            "Invalid subscription_id or plant_id? Response: %s",
-                            sub_id,
-                            delete_response,
-                        )
-                    else:
-                        _LOGGER.error(
-                            "Failed to delete subscription %s (status %s): %s",
-                            sub_id,
-                            status,
-                            delete_response,
-                        )
-            else:
-                _LOGGER.warning(
-                    "Could not fetch subscriptions for cleanup: %s",
-                    subscriptions_response,
-                )
-
-                # Fallback: try to delete the known subscription_id
-                if subscription_id and subscription_id != "None":
-                    _LOGGER.info(
-                        "Attempting fallback deletion of known subscription_id: %s",
-                        subscription_id,
-                    )
-                    response = await bticino_api.delete_subscribe_c2c_notifications(
-                        plant_id, subscription_id
-                    )
-                    status = response.get("status_code")
-                    if status == 200:
-                        _LOGGER.info(
-                            "Deleted current subscription: %s", subscription_id
-                        )
-                    else:
-                        _LOGGER.warning(
-                            "Fallback deletion failed (status %s): %s",
-                            status,
-                            response,
-                        )
+                payload = {
+                    "EndPointUrl": webhook_url
+                }
+                
+                # We attempt subscription even if the initial refresh failed.
+                response = await api.set_subscribe_c2c_notifications(plant_id, payload)
+                status = response.get("status_code")
+                
+                if status in (200, 201):
+                    _LOGGER.info("Successfully subscribed C2C for Plant %s", plant_id)
+                elif status == 409:
+                    _LOGGER.info("C2C Subscription already active (409) for Plant %s. No action needed.", plant_id)
                 else:
-                    _LOGGER.warning("No valid subscription_id to delete in fallback")
+                    _LOGGER.warning(
+                        "Failed to subscribe C2C for Plant %s: %s", 
+                        plant_id, 
+                        response
+                    )
+            except Exception as e:
+                # Log error but don't stop the setup process
+                _LOGGER.error("Error subscribing C2C for Plant %s: %s", plant_id, e)
 
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            _LOGGER.error("Error during subscription cleanup: %s", e, exc_info=True)
-
-        # Remove webhook
-        webhook_handler = BticinoX8000WebhookHandler(hass, webhook_id)
-        await webhook_handler.async_remove_webhook()
-        _LOGGER.info("Webhook %s removed", webhook_id)
-
-    _LOGGER.info("Bticino X8000 addon unloaded and cleaned up successfully")
+    # 7. Forward setup to platforms
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    
     return True
+
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a config entry."""
+    webhook_handler = BticinoX8000WebhookHandler(hass, WEBHOOK_ID)
+    await webhook_handler.async_remove_webhook()
+    
+    if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+        hass.data[DOMAIN].pop(entry.entry_id)
+
+    return unload_ok

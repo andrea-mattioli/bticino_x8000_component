@@ -140,6 +140,7 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     refresh_token,
                     access_token_expires_on,
                 ) = await exchange_code_for_tokens(
+                    self.hass,
                     self.data["client_id"],
                     self.data["client_secret"],
                     query_params.get("code", [""])[0],
@@ -149,7 +150,8 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self.data["refresh_token"] = refresh_token
                 self.data["access_token_expires_on"] = access_token_expires_on
 
-                self.bticino_api = BticinoX8000Api(self.data)
+                # UPDATED INIT: PASS HASS
+                self.bticino_api = BticinoX8000Api(self.hass, self.data)
 
                 if not await self.bticino_api.check_api_endpoint_health():
                     return self.async_abort(reason="Auth Failed!")
@@ -157,38 +159,38 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 # Fetch and display the list of thermostats
                 plants_data = await self.bticino_api.get_plants()
                 _LOGGER.info("PLANTS_DATA: %s", plants_data)
-                if plants_data["status_code"] == 200:
+                
+                # Handle API wrapper response structure
+                if plants_data.get("status_code") == 200:
                     thermostat_options: dict[Any, Any] = {}
-                    plant_ids = list({plant["id"] for plant in plants_data["data"]})
+                    # Data is inside "data" key now due to wrapper
+                    plants_list = plants_data.get("data", [])
+                    # Verify structure
+                    if isinstance(plants_list, dict) and "plants" in plants_list:
+                         plants_list = plants_list["plants"]
+                    
+                    plant_ids = list({plant["id"] for plant in plants_list})
                     _LOGGER.info("PLANTS_LIST: %s", plant_ids)
+                    
                     for plant_id in plant_ids:
                         _LOGGER.debug("Processing plant_id: %s", plant_id)
                         try:
                             topologies = await self.bticino_api.get_topology(plant_id)
-                            _LOGGER.debug(
-                                "TOPOLOGIES for plant %s: %s", plant_id, topologies
-                            )
-
-                            # Check if topology fetch was successful
+                            
                             if topologies.get("status_code") != 200:
-                                _LOGGER.error(
-                                    "Failed to get topology for plant %s: %s. Skipping plant.",
-                                    plant_id,
-                                    topologies.get("error"),
-                                )
-                                continue  # Skip this plant instead of crashing
-
-                            if "data" not in topologies:
-                                _LOGGER.error(
-                                    "No data in topology response for plant %s. Skipping plant.",
-                                    plant_id,
-                                )
                                 continue
+
+                            # Wrapper handling
+                            topo_data = topologies.get("data", {})
+                            if "plant" in topo_data:
+                                modules = topo_data["plant"].get("modules", [])
+                            else:
+                                modules = topo_data # Fallback
 
                             if plant_id not in thermostat_options:
                                 thermostat_options[plant_id] = []
 
-                            for thermo in topologies["data"]:
+                            for thermo in modules:
                                 _LOGGER.debug(
                                     "Processing thermostat: %s in plant: %s",
                                     thermo.get("id"),
@@ -199,23 +201,8 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                                     programs = await self.get_programs_from_api(
                                         plant_id, thermo["id"]
                                     )
-                                    _LOGGER.debug(
-                                        "Programs retrieved for thermo %s: %s programs found",
-                                        thermo["id"],
-                                        len(programs) if programs else 0,
-                                    )
-                                except (
-                                    Exception  # pylint: disable=broad-exception-caught
-                                ) as e:
-                                    _LOGGER.error(
-                                        "Failed to get programs for thermo %s in plant %s: %s. "
-                                        "Using empty program list.",
-                                        thermo.get("id"),
-                                        plant_id,
-                                        e,
-                                        exc_info=True,
-                                    )
-                                    programs = []  # Fallback to empty list
+                                except Exception:
+                                    programs = []
 
                                 thermostat_options[plant_id].append(
                                     {
@@ -224,17 +211,10 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                                         "programs": programs,
                                     }
                                 )
-                        except Exception as e:  # pylint: disable=broad-exception-caught
-                            _LOGGER.error(
-                                "Unexpected error processing plant %s: %s. Skipping plant.",
-                                plant_id,
-                                e,
-                                exc_info=True,
-                            )
-                            continue  # Skip this plant and continue with others
+                        except Exception:
+                            continue
 
                     self._thermostat_options = thermostat_options
-                    _LOGGER.info("THERMOSTAT_DETECTED: %s", self._thermostat_options)
 
                 return self.async_show_form(
                     step_id="select_thermostats",
@@ -269,52 +249,22 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> list[dict[str, Any]] | None:
         """Retrieve the program list."""
         if self.bticino_api is not None:
-            _LOGGER.debug(
-                "get_programs_from_api - Fetching programs for plant_id: %s, topology_id: %s",
-                plant_id,
-                topology_id,
-            )
-
             programs = await self.bticino_api.get_chronothermostat_programlist(
                 plant_id, topology_id
             )
 
-            _LOGGER.debug("get_programs_from_api - Response: %s", programs)
-
-            # Check if API call was successful
             if programs.get("status_code") != 200:
-                _LOGGER.error(
-                    "get_programs_from_api - Failed to get programs. "
-                    "plant_id: %s, topology_id: %s, status: %s, error: %s",
-                    plant_id,
-                    topology_id,
-                    programs.get("status_code"),
-                    programs.get("error"),
-                )
-                return []  # Return empty list instead of None to avoid crashes
-
-            # Check if data key exists
-            if "data" not in programs:
-                _LOGGER.warning(
-                    "get_programs_from_api - No data in response. "
-                    "plant_id: %s, topology_id: %s",
-                    plant_id,
-                    topology_id,
-                )
                 return []
 
-            # Filter programs
-            filtered_programs = [
-                program for program in programs["data"] if program.get("number") != 0
-            ]
-
-            _LOGGER.debug(
-                "get_programs_from_api - Filtered programs count: %s for topology_id: %s",
-                len(filtered_programs),
-                topology_id,
-            )
-
-            return filtered_programs
+            # Wrapper handling
+            data = programs.get("data", {})
+            if "chronothermostats" in data:
+                 chrono_list = data["chronothermostats"]
+                 if chrono_list:
+                      programs_list = chrono_list[0].get("programs", [])
+                      return [p for p in programs_list if p.get("number") != 0]
+            
+            return []
         return None
 
     async def async_step_select_thermostats(
@@ -327,7 +277,6 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             for thermo_data in thermo_list
             if thermo_data["name"] in user_input["selected_thermostats"]
         ]
-        _LOGGER.info("My_selected_thermostats: %s", selected_thermostats)
         return self.async_create_entry(
             title="Bticino X8000",
             data={

@@ -1,6 +1,4 @@
-"""Sensor platform for Bticino X8000."""
-
-# pylint: disable=duplicate-code
+"""Sensor platform for Bticino X8000 using DataUpdateCoordinator."""
 
 import logging
 from typing import Any
@@ -12,150 +10,162 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, UnitOfTemperature, UnitOfTime
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
+from .coordinator import BticinoCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(  # pylint: disable=too-many-locals
-    hass: HomeAssistant,  # pylint: disable=unused-argument
+async def async_setup_entry(
+    hass: HomeAssistant,
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Bticino X8000 sensors."""
-    data = dict(config_entry.data)
-    entities: list[SensorEntity] = []
+    coordinator: BticinoCoordinator = hass.data[DOMAIN][config_entry.entry_id]
 
-    for plant_data in data["selected_thermostats"]:
+    # Debug log to indicate the setup start
+    _LOGGER.debug("Setting up Bticino X8000 sensor platform")
+
+    # Use config data to iterate over selected thermostats.
+    # This ensures entities are created even if the coordinator is initially empty.
+    data = dict(config_entry.data)
+    entities = []
+    
+    selected_thermostats = data.get("selected_thermostats", [])
+    _LOGGER.debug("Found %d selected thermostats in configuration", len(selected_thermostats))
+
+    for plant_data in selected_thermostats:
         plant_id = list(plant_data.keys())[0]
         thermo_data = list(plant_data.values())[0]
 
         topology_id = thermo_data.get("id")
         thermostat_name = thermo_data.get("name")
-
-        # Temperatura attuale
-        entities.append(
-            BticinoTemperatureSensor(
-                data=data,
-                plant_id=plant_id,
-                topology_id=topology_id,
-                thermostat_name=thermostat_name,
-            )
-        )
-
-        # Umidità attuale
-        entities.append(
-            BticinoHumiditySensor(
-                data=data,
-                plant_id=plant_id,
-                topology_id=topology_id,
-                thermostat_name=thermostat_name,
-            )
-        )
-
-        # Temperatura target
-        entities.append(
-            BticinoTargetTemperatureSensor(
-                data=data,
-                plant_id=plant_id,
-                topology_id=topology_id,
-                thermostat_name=thermostat_name,
-            )
-        )
-
-        # Programma corrente
         programs = thermo_data.get("programs", [])
+        
+        _LOGGER.debug("Creating sensors for thermostat: %s (ID: %s)", thermostat_name, topology_id)
+
+        # Create standard sensors
+        sensors_classes = [
+            BticinoTemperatureSensor,
+            BticinoHumiditySensor,
+            BticinoTargetTemperatureSensor,
+            BticinoModeSensor,
+            BticinoStatusSensor,
+            BticinoBoostTimeRemainingSensor,
+        ]
+
+        for sensor_class in sensors_classes:
+            entities.append(
+                sensor_class(
+                    coordinator, plant_id, topology_id, thermostat_name
+                )
+            )
+
+        # Create Program sensor (needs extra argument for program list)
         entities.append(
             BticinoProgramSensor(
-                data=data,
-                plant_id=plant_id,
-                topology_id=topology_id,
-                thermostat_name=thermostat_name,
-                programs=programs,
+                coordinator, plant_id, topology_id, thermostat_name, programs
             )
         )
 
-        # Mode
-        entities.append(
-            BticinoModeSensor(
-                data=data,
-                plant_id=plant_id,
-                topology_id=topology_id,
-                thermostat_name=thermostat_name,
-            )
-        )
+    _LOGGER.debug("Total entities to add: %d", len(entities))
 
-        # Status
-        entities.append(
-            BticinoStatusSensor(
-                data=data,
-                plant_id=plant_id,
-                topology_id=topology_id,
-                thermostat_name=thermostat_name,
-            )
-        )
-
-        # Boost time remaining
-        entities.append(
-            BticinoBoostTimeRemainingSensor(
-                data=data,
-                plant_id=plant_id,
-                topology_id=topology_id,
-                thermostat_name=thermostat_name,
-            )
-        )
-
-        _LOGGER.debug("Created %d sensors for %s", 7, thermostat_name)
-
-    async_add_entities(entities, update_before_add=False)
-
-    # Sensors will be populated by webhook events from climate entity
-    # No additional API calls needed
+    # CRITICAL FIX: Removed 'update_before_add=True'
+    # This prevents the sensors from forcing an API call immediately during initialization.
+    # If the system is in "Cool Down" (Rate Limit) mode, forcing an update here would
+    # break the silence and trigger another error notification.
+    # Entities will start as 'Unavailable' until the first successful Coordinator update.
+    async_add_entities(entities)
 
 
-class BticinoBaseSensor(SensorEntity):
+class BticinoBaseSensor(CoordinatorEntity, SensorEntity):
     """Base class for Bticino sensors."""
 
     def __init__(
         self,
-        data: dict[str, Any],
+        coordinator: BticinoCoordinator,
         plant_id: str,
         topology_id: str,
         thermostat_name: str,
     ) -> None:
         """Initialize the sensor."""
-        self._data = data
+        super().__init__(coordinator)
         self._plant_id = plant_id
         self._topology_id = topology_id
         self._thermostat_name = thermostat_name
-        self._attr_should_poll = False
+        self._attr_has_entity_name = True
 
     @property
     def device_info(self) -> DeviceInfo:
-        """Return device info to link with climate entity."""
+        """Return device info."""
         return DeviceInfo(
             identifiers={(DOMAIN, self._topology_id)},
             name=self._thermostat_name,
             manufacturer="Legrand",
             model="X8000",
+            via_device=(DOMAIN, self._plant_id),
         )
 
-    async def async_added_to_hass(self) -> None:
-        """Register dispatcher connection for webhook updates."""
-        async_dispatcher_connect(  # type: ignore[has-type]
-            self.hass,
-            f"{DOMAIN}_webhook_update",
-            self.handle_webhook_update,
-        )
+    @property
+    def _thermostat_data(self) -> dict[str, Any]:
+        """Retrieve data specific to this thermostat from coordinator."""
+        # CRITICAL FIX: Safety check for None data.
+        # When the integration loads during a Rate Limit ban (fixed boot loop),
+        # self.coordinator.data is None. We must return an empty dict to prevent crashes.
+        if self.coordinator.data is None:
+            return {}
 
-    def handle_webhook_update(self, event: dict[str, Any]) -> None:
-        """Handle webhook updates - to be implemented by subclasses."""
+        # Coordinator data structure is flat: {topology_id: {data...}}
+        return self.coordinator.data.get(self._topology_id, {}) or {}
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        # This method is called automatically when the coordinator receives new data.
+        # We log the update here to provide visibility into the data flow.
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            _LOGGER.debug(
+                "Entity %s (%s) received data update from coordinator",
+                self.name,
+                self.unique_id,
+            )
+        # Call the parent method to actually update the state in Home Assistant
+        super()._handle_coordinator_update()
+
+    def _get_nested_value(self, path: list[str | int], cast_type: type = str) -> Any:
+        """Helper to extract values deeply nested in the dictionary."""
+        data = self._thermostat_data
+        try:
+            for key in path:
+                if isinstance(data, list):
+                    # Handle list access if key is an integer index
+                    # Ensure key is actually an int before using it as index
+                    if isinstance(key, int):
+                        idx = key
+                        if 0 <= idx < len(data):
+                            data = data[idx]
+                        else:
+                            return None
+                    else:
+                        return None
+                elif isinstance(data, dict):
+                    data = data.get(str(key))
+                else:
+                    return None
+
+                if data is None:
+                    return None
+
+            return cast_type(data)
+        except (ValueError, TypeError, IndexError):
+            return None
 
 
 class BticinoTemperatureSensor(BticinoBaseSensor):
@@ -164,80 +174,17 @@ class BticinoTemperatureSensor(BticinoBaseSensor):
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
     _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_name = "Temperature"
 
-    def __init__(
-        self,
-        data: dict[str, Any],
-        plant_id: str,
-        topology_id: str,
-        thermostat_name: str,
-    ) -> None:
-        """Initialize the temperature sensor."""
-        super().__init__(data, plant_id, topology_id, thermostat_name)
-        self._attr_name = f"{thermostat_name} Temperature"
+    def __init__(self, coordinator, plant_id, topology_id, thermostat_name):
+        super().__init__(coordinator, plant_id, topology_id, thermostat_name)
         self._attr_unique_id = f"bticino_x8000_{topology_id}_temperature"
-        self._attr_native_value = None
 
-    def handle_webhook_update(self, event: dict[str, Any]) -> None:
-        """Handle webhook updates for temperature."""
-        _LOGGER.debug(
-            "Temperature sensor %s received webhook event: %s",
-            self._thermostat_name,
-            event,
-        )
-        try:
-            data_list = event.get("data", [])
-            if not data_list:
-                _LOGGER.debug(
-                    "Temperature sensor %s: No data in webhook event",
-                    self._thermostat_name,
-                )
-                return
-
-            chronothermostats = (
-                data_list[0].get("data", {}).get("chronothermostats", [])
-            )
-            _LOGGER.debug(
-                "Temperature sensor %s: Found %d chronothermostats in webhook",
-                self._thermostat_name,
-                len(chronothermostats),
-            )
-
-            for chrono_data in chronothermostats:
-                plant_data = chrono_data.get("sender", {}).get("plant", {})
-                plant_id = plant_data.get("id")
-                topology_id = plant_data.get("module", {}).get("id")
-
-                if plant_id != self._plant_id or topology_id != self._topology_id:
-                    continue
-
-                # Update temperature - READ FROM measures ARRAY like climate does
-                thermometer_data = chrono_data.get("thermometer", {}).get(
-                    "measures", [{}]
-                )[0]
-                if thermometer_data and "value" in thermometer_data:
-                    self._attr_native_value = float(thermometer_data["value"])
-                    self.schedule_update_ha_state()
-                    _LOGGER.info(
-                        "Temperature sensor updated for %s: %s°C",
-                        self._thermostat_name,
-                        self._attr_native_value,
-                    )
-                else:
-                    _LOGGER.warning(
-                        "Temperature sensor %s: No temperature data in webhook. "
-                        "Thermometer data: %s",
-                        self._thermostat_name,
-                        thermometer_data,
-                    )
-                return
-        except (KeyError, ValueError, TypeError) as e:
-            _LOGGER.error(
-                "Error handling webhook update for temperature %s: %s",
-                self._thermostat_name,
-                e,
-                exc_info=True,
-            )
+    @property
+    def native_value(self) -> float | None:
+        """Return the temperature."""
+        # Path: thermometer -> measures -> [0] -> value
+        return self._get_nested_value(["thermometer", "measures", 0, "value"], float)
 
 
 class BticinoHumiditySensor(BticinoBaseSensor):
@@ -246,72 +193,17 @@ class BticinoHumiditySensor(BticinoBaseSensor):
     _attr_device_class = SensorDeviceClass.HUMIDITY
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_name = "Humidity"
 
-    def __init__(
-        self,
-        data: dict[str, Any],
-        plant_id: str,
-        topology_id: str,
-        thermostat_name: str,
-    ) -> None:
-        """Initialize the humidity sensor."""
-        super().__init__(data, plant_id, topology_id, thermostat_name)
-        self._attr_name = f"{thermostat_name} Humidity"
+    def __init__(self, coordinator, plant_id, topology_id, thermostat_name):
+        super().__init__(coordinator, plant_id, topology_id, thermostat_name)
         self._attr_unique_id = f"bticino_x8000_{topology_id}_humidity"
-        self._attr_native_value = None
 
-    def handle_webhook_update(self, event: dict[str, Any]) -> None:
-        """Handle webhook updates for humidity."""
-        _LOGGER.debug(
-            "Humidity sensor %s received webhook event", self._thermostat_name
-        )
-        try:
-            data_list = event.get("data", [])
-            if not data_list:
-                _LOGGER.debug(
-                    "Humidity sensor %s: No data in webhook event",
-                    self._thermostat_name,
-                )
-                return
-
-            chronothermostats = (
-                data_list[0].get("data", {}).get("chronothermostats", [])
-            )
-
-            for chrono_data in chronothermostats:
-                plant_data = chrono_data.get("sender", {}).get("plant", {})
-                plant_id = plant_data.get("id")
-                topology_id = plant_data.get("module", {}).get("id")
-
-                if plant_id != self._plant_id or topology_id != self._topology_id:
-                    continue
-
-                # Update humidity - READ FROM measures ARRAY like climate does
-                hygrometer_data = chrono_data.get("hygrometer", {}).get(
-                    "measures", [{}]
-                )[0]
-                if hygrometer_data and "value" in hygrometer_data:
-                    self._attr_native_value = float(hygrometer_data["value"])
-                    self.schedule_update_ha_state()
-                    _LOGGER.info(
-                        "Humidity sensor updated for %s: %s%%",
-                        self._thermostat_name,
-                        self._attr_native_value,
-                    )
-                else:
-                    _LOGGER.warning(
-                        "Humidity sensor %s: No humidity data in webhook. Hygrometer data: %s",
-                        self._thermostat_name,
-                        hygrometer_data,
-                    )
-                return
-        except (KeyError, ValueError, TypeError) as e:
-            _LOGGER.error(
-                "Error handling webhook update for humidity %s: %s",
-                self._thermostat_name,
-                e,
-                exc_info=True,
-            )
+    @property
+    def native_value(self) -> float | None:
+        """Return the humidity."""
+        # Path: hygrometer -> measures -> [0] -> value
+        return self._get_nested_value(["hygrometer", "measures", 0, "value"], float)
 
 
 class BticinoTargetTemperatureSensor(BticinoBaseSensor):
@@ -319,239 +211,90 @@ class BticinoTargetTemperatureSensor(BticinoBaseSensor):
 
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
-    _attr_state_class = SensorStateClass.MEASUREMENT
+    # Target temperature is a setting, not a measurement
+    _attr_state_class = None
+    _attr_name = "Target Temperature"
 
-    def __init__(
-        self,
-        data: dict[str, Any],
-        plant_id: str,
-        topology_id: str,
-        thermostat_name: str,
-    ) -> None:
-        """Initialize the target temperature sensor."""
-        super().__init__(data, plant_id, topology_id, thermostat_name)
-        self._attr_name = f"{thermostat_name} Target Temperature"
+    def __init__(self, coordinator, plant_id, topology_id, thermostat_name):
+        super().__init__(coordinator, plant_id, topology_id, thermostat_name)
         self._attr_unique_id = f"bticino_x8000_{topology_id}_target_temperature"
-        self._attr_native_value = None
 
-    def handle_webhook_update(self, event: dict[str, Any]) -> None:
-        """Handle webhook updates for target temperature."""
-        _LOGGER.debug(
-            "Target temperature sensor %s received webhook event", self._thermostat_name
-        )
-        try:
-            data_list = event.get("data", [])
-            if not data_list:
-                return
-
-            chronothermostats = (
-                data_list[0].get("data", {}).get("chronothermostats", [])
-            )
-            for chrono_data in chronothermostats:
-                plant_data = chrono_data.get("sender", {}).get("plant", {})
-                plant_id = plant_data.get("id")
-                topology_id = plant_data.get("module", {}).get("id")
-
-                if plant_id != self._plant_id or topology_id != self._topology_id:
-                    continue
-
-                # Update target temperature
-                set_point = chrono_data.get("setPoint", {})
-                if set_point and "value" in set_point:
-                    self._attr_native_value = float(set_point["value"])
-                    self.schedule_update_ha_state()
-                    _LOGGER.info(
-                        "Target temperature sensor updated for %s: %s°C",
-                        self._thermostat_name,
-                        self._attr_native_value,
-                    )
-                return
-        except (KeyError, ValueError, TypeError) as e:
-            _LOGGER.error(
-                "Error handling webhook update for target temperature %s: %s",
-                self._thermostat_name,
-                e,
-                exc_info=True,
-            )
+    @property
+    def native_value(self) -> float | None:
+        """Return the target temperature."""
+        # Path: setPoint -> value
+        return self._get_nested_value(["setPoint", "value"], float)
 
 
 class BticinoProgramSensor(BticinoBaseSensor):
     """Sensor for current program."""
 
     _attr_icon = "mdi:calendar-clock"
+    _attr_name = "Current Program"
 
-    def __init__(  # pylint: disable=too-many-arguments
+    def __init__(
         self,
-        data: dict[str, Any],
-        plant_id: str,
-        topology_id: str,
-        thermostat_name: str,
-        programs: list[dict[str, Any]],
+        coordinator,
+        plant_id,
+        topology_id,
+        thermostat_name,
+        programs,
     ) -> None:
-        """Initialize the program sensor."""
-        super().__init__(data, plant_id, topology_id, thermostat_name)
-        self._attr_name = f"{thermostat_name} Current Program"
+        """Initialize."""
+        super().__init__(coordinator, plant_id, topology_id, thermostat_name)
         self._attr_unique_id = f"bticino_x8000_{topology_id}_current_program"
-        self._attr_native_value = None
-        self._programs = programs  # Store programs list for name lookup
+        self._programs = programs
 
-    def _get_program_name(self, program_number: int) -> str:
-        """Get program name from program number."""
-        for program in self._programs:
-            if int(program.get("number", -1)) == program_number:
-                return program.get("name", "Unknown")
-        return "Unknown"
+    @property
+    def native_value(self) -> str | None:
+        """Return the name of the current program."""
+        # API returns: programs -> [0] -> number
+        prog_number = self._get_nested_value(["programs", 0, "number"], int)
 
-    def handle_webhook_update(self, event: dict[str, Any]) -> None:
-        """Handle webhook updates for current program."""
-        try:
-            data_list = event.get("data", [])
-            if not data_list:
-                return
+        if prog_number is not None:
+            # Match number to static name from config
+            for prog in self._programs:
+                if int(prog.get("number", -1)) == prog_number:
+                    return prog.get("name")
+            return f"Program {prog_number}"
 
-            chronothermostats = (
-                data_list[0].get("data", {}).get("chronothermostats", [])
-            )
-            for chrono_data in chronothermostats:
-                plant_data = chrono_data.get("sender", {}).get("plant", {})
-                plant_id = plant_data.get("id")
-                topology_id = plant_data.get("module", {}).get("id")
-
-                if plant_id != self._plant_id or topology_id != self._topology_id:
-                    continue
-
-                # Update program - API returns programs array with number
-                programs = chrono_data.get("programs", [])
-                if programs and len(programs) > 0:
-                    program_number = int(programs[0].get("number", 0))
-                    self._attr_native_value = self._get_program_name(program_number)
-                    self.schedule_update_ha_state()
-                    _LOGGER.debug(
-                        "Program sensor updated for %s: %s (number: %s)",
-                        self._thermostat_name,
-                        self._attr_native_value,
-                        program_number,
-                    )
-                return
-        except (KeyError, TypeError) as e:
-            _LOGGER.error(
-                "Error handling webhook update for program %s: %s",
-                self._thermostat_name,
-                e,
-                exc_info=True,
-            )
+        return None
 
 
 class BticinoModeSensor(BticinoBaseSensor):
     """Sensor for current mode."""
 
     _attr_icon = "mdi:thermostat"
+    # Using SensorDeviceClass.ENUM would require defined options,
+    # keeping as generic string for safety against API changes.
+    _attr_name = "Mode"
 
-    def __init__(
-        self,
-        data: dict[str, Any],
-        plant_id: str,
-        topology_id: str,
-        thermostat_name: str,
-    ) -> None:
-        """Initialize the mode sensor."""
-        super().__init__(data, plant_id, topology_id, thermostat_name)
-        self._attr_name = f"{thermostat_name} Mode"
+    def __init__(self, coordinator, plant_id, topology_id, thermostat_name):
+        super().__init__(coordinator, plant_id, topology_id, thermostat_name)
         self._attr_unique_id = f"bticino_x8000_{topology_id}_mode"
-        self._attr_native_value = None
 
-    def handle_webhook_update(self, event: dict[str, Any]) -> None:
-        """Handle webhook updates for mode."""
-        try:
-            data_list = event.get("data", [])
-            if not data_list:
-                return
-
-            chronothermostats = (
-                data_list[0].get("data", {}).get("chronothermostats", [])
-            )
-            for chrono_data in chronothermostats:
-                plant_data = chrono_data.get("sender", {}).get("plant", {})
-                plant_id = plant_data.get("id")
-                topology_id = plant_data.get("module", {}).get("id")
-
-                if plant_id != self._plant_id or topology_id != self._topology_id:
-                    continue
-
-                # Update mode
-                mode = chrono_data.get("mode")
-                if mode:
-                    self._attr_native_value = mode.lower()
-                    self.schedule_update_ha_state()
-                    _LOGGER.debug(
-                        "Mode sensor updated for %s: %s",
-                        self._thermostat_name,
-                        self._attr_native_value,
-                    )
-                return
-        except (KeyError, TypeError) as e:
-            _LOGGER.error(
-                "Error handling webhook update for mode %s: %s",
-                self._thermostat_name,
-                e,
-                exc_info=True,
-            )
+    @property
+    def native_value(self) -> str | None:
+        """Return the current mode (e.g., automatic, manual, boost)."""
+        val = self._thermostat_data.get("mode")
+        return val.lower() if val else None
 
 
 class BticinoStatusSensor(BticinoBaseSensor):
-    """Sensor for current status."""
+    """Sensor for current status (active/inactive)."""
 
     _attr_icon = "mdi:power"
+    _attr_name = "Status"
 
-    def __init__(
-        self,
-        data: dict[str, Any],
-        plant_id: str,
-        topology_id: str,
-        thermostat_name: str,
-    ) -> None:
-        """Initialize the status sensor."""
-        super().__init__(data, plant_id, topology_id, thermostat_name)
-        self._attr_name = f"{thermostat_name} Status"
+    def __init__(self, coordinator, plant_id, topology_id, thermostat_name):
+        super().__init__(coordinator, plant_id, topology_id, thermostat_name)
         self._attr_unique_id = f"bticino_x8000_{topology_id}_status"
-        self._attr_native_value = None
 
-    def handle_webhook_update(self, event: dict[str, Any]) -> None:
-        """Handle webhook updates for status."""
-        try:
-            data_list = event.get("data", [])
-            if not data_list:
-                return
-
-            chronothermostats = (
-                data_list[0].get("data", {}).get("chronothermostats", [])
-            )
-            for chrono_data in chronothermostats:
-                plant_data = chrono_data.get("sender", {}).get("plant", {})
-                plant_id = plant_data.get("id")
-                topology_id = plant_data.get("module", {}).get("id")
-
-                if plant_id != self._plant_id or topology_id != self._topology_id:
-                    continue
-
-                # Update status
-                load_state = chrono_data.get("loadState")
-                if load_state:
-                    self._attr_native_value = load_state.lower()
-                    self.schedule_update_ha_state()
-                    _LOGGER.debug(
-                        "Status sensor updated for %s: %s",
-                        self._thermostat_name,
-                        self._attr_native_value,
-                    )
-                return
-        except (KeyError, TypeError) as e:
-            _LOGGER.error(
-                "Error handling webhook update for status %s: %s",
-                self._thermostat_name,
-                e,
-                exc_info=True,
-            )
+    @property
+    def native_value(self) -> str | None:
+        """Return the load state (heating active or not)."""
+        val = self._thermostat_data.get("loadState")
+        return val.lower() if val else None
 
 
 class BticinoBoostTimeRemainingSensor(BticinoBaseSensor):
@@ -560,73 +303,37 @@ class BticinoBoostTimeRemainingSensor(BticinoBaseSensor):
     _attr_device_class = SensorDeviceClass.DURATION
     _attr_native_unit_of_measurement = UnitOfTime.MINUTES
     _attr_icon = "mdi:timer"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_name = "Boost Time Remaining"
 
-    def __init__(
-        self,
-        data: dict[str, Any],
-        plant_id: str,
-        topology_id: str,
-        thermostat_name: str,
-    ) -> None:
-        """Initialize the boost time remaining sensor."""
-        super().__init__(data, plant_id, topology_id, thermostat_name)
-        self._attr_name = f"{thermostat_name} Boost Time Remaining"
+    def __init__(self, coordinator, plant_id, topology_id, thermostat_name):
+        super().__init__(coordinator, plant_id, topology_id, thermostat_name)
         self._attr_unique_id = f"bticino_x8000_{topology_id}_boost_time_remaining"
-        self._attr_native_value = None
 
-    def handle_webhook_update(  # pylint: disable=too-many-locals
-        self, event: dict[str, Any]
-    ) -> None:
-        """Handle webhook updates for boost time remaining."""
-        try:
-            data_list = event.get("data", [])
-            if not data_list:
-                return
+    @property
+    def native_value(self) -> int | None:
+        """Return remaining boost time in minutes."""
+        data = self._thermostat_data
+        mode = data.get("mode", "").lower()
 
-            chronothermostats = (
-                data_list[0].get("data", {}).get("chronothermostats", [])
-            )
-            for chrono_data in chronothermostats:
-                plant_data = chrono_data.get("sender", {}).get("plant", {})
-                plant_id = plant_data.get("id")
-                topology_id = plant_data.get("module", {}).get("id")
-
-                if plant_id != self._plant_id or topology_id != self._topology_id:
-                    continue
-
-                # Update boost time remaining
-                mode = chrono_data.get("mode", "").lower()
-                if mode == "boost" and "activationTime" in chrono_data:
-                    activation_time = chrono_data["activationTime"]
-
-                    # Parse end time
-                    if "/" in activation_time:
-                        end_time_str = activation_time.split("/")[1]
-                    else:
-                        end_time_str = activation_time
-
-                    end_time = dt_util.parse_datetime(end_time_str)
-                    if end_time:
-                        now = dt_util.now()
-                        end_time = dt_util.as_utc(end_time)
-                        remaining_seconds = (end_time - now).total_seconds()
-                        remaining_minutes = max(0, int(remaining_seconds / 60))
-
-                        self._attr_native_value = remaining_minutes
-                        _LOGGER.debug(
-                            "Boost time remaining updated for %s: %s minutes",
-                            self._thermostat_name,
-                            self._attr_native_value,
-                        )
+        # Check mode first. If not boost, return 0 (UX choice).
+        if mode == "boost" and "activationTime" in data:
+            activation_time = data["activationTime"]
+            try:
+                # Parse end time from "start/end" or just "end"
+                if "/" in activation_time:
+                    end_time_str = activation_time.split("/")[1]
                 else:
-                    self._attr_native_value = 0
+                    end_time_str = activation_time
 
-                self.schedule_update_ha_state()
-                return
-        except (KeyError, ValueError, TypeError) as e:
-            _LOGGER.error(
-                "Error handling webhook update for boost time remaining %s: %s",
-                self._thermostat_name,
-                e,
-                exc_info=True,
-            )
+                end_time = dt_util.parse_datetime(end_time_str)
+                if end_time:
+                    # Compare UTC with UTC to avoid timezone errors
+                    now = dt_util.utcnow()
+                    end_time = dt_util.as_utc(end_time)
+                    remaining_seconds = (end_time - now).total_seconds()
+                    return max(0, int(remaining_seconds / 60))
+            except (ValueError, TypeError, IndexError):
+                pass
+
+        return 0

@@ -1,10 +1,13 @@
-"""Api."""
+"""Api with strict rate limiting, concurrency control and token persistence."""
 
+import asyncio
 import json
 import logging
 from typing import Any
 
 import aiohttp
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .auth import refresh_access_token
 from .const import (
@@ -12,544 +15,236 @@ from .const import (
     PLANTS,
     THERMOSTAT_API_ENDPOINT,
     TOPOLOGY,
+    DOMAIN,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
+# Base delay between calls (starting point for exponential backoff)
+API_DELAY_SECONDS = 2.0
+MAX_CONCURRENT_REQUESTS = 1
+# Explicit timeout for HTTP requests (HA Best Practice)
+HTTP_TIMEOUT = 30
+
+# --- Custom Exceptions Definition ---
+class BticinoApiError(Exception):
+    """Base class for all API errors."""
+
+class RateLimitError(BticinoApiError):
+    """Raised when the API returns a 429 error."""
+
+class AuthError(BticinoApiError):
+    """Raised when authentication fails or token cannot be refreshed."""
 
 class BticinoX8000Api:
-    """Legrand API class."""
+    """Legrand API class with Rate Limiting, Backoff, and Shared Session."""
 
-    def __init__(self, data: dict[str, Any]) -> None:
+    def __init__(self, hass: HomeAssistant, data: dict[str, Any]) -> None:
         """Init function."""
+        self.hass = hass
         self.data = data
         self.header = {
-            "Authorization": self.data["access_token"],
-            "Ocp-Apim-Subscription-Key": self.data["subscription_key"],
+            "Authorization": self.data.get("access_token"),
+            "Ocp-Apim-Subscription-Key": self.data.get("subscription_key"),
             "Content-Type": "application/json",
         }
+        # RENAMED: Lock specifically used to serialize token refresh operations
+        self._token_refresh_lock = asyncio.Lock()
+        self._api_semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+        self.auth_broken = False
+        
+        # Use Home Assistant's shared session
+        self._session = async_get_clientsession(hass)
+
+    async def _async_request(
+        self, method: str, url: str, payload: dict | None = None
+    ) -> dict[str, Any]:
+        """
+        Wrapper for all API calls.
+        Handles Rate Limiting (Exponential Backoff), Session reuse, and Retries.
+        Raises specific exceptions (RateLimitError, AuthError) on failure.
+        """
+        if self.auth_broken:
+            _LOGGER.warning("Authentication previously broken. Skipping request to %s", url)
+            raise AuthError("Authentication is broken")
+
+        # ACQUIRE SEMAPHORE (Serialize requests)
+        async with self._api_semaphore:
+            # Minimal pacing to avoid bursting even before the first request
+            await asyncio.sleep(0.5)
+            
+            attempts = 0
+            max_attempts = 3
+            current_delay = API_DELAY_SECONDS
+            
+            while attempts < max_attempts:
+                attempts += 1
+                
+                try:
+                    request_args = {
+                        "headers": self.header,
+                        "timeout": aiohttp.ClientTimeout(total=HTTP_TIMEOUT)
+                    }
+                    if payload:
+                        request_args["json"] = payload
+
+                    _LOGGER.debug("API Attempt %s/%s: %s %s", attempts, max_attempts, method, url)
+
+                    async with self._session.request(method, url, **request_args) as response:
+                        status_code = response.status
+                        content = await response.text()
+
+                        # CASE 1: SUCCESS (200 OK, 201 Created, 409 Conflict)
+                        if status_code in (200, 201, 409):
+                            try:
+                                return {"status_code": status_code, "data": json.loads(content)}
+                            except json.JSONDecodeError:
+                                return {"status_code": status_code, "data": {}}
+
+                        # CASE 2: TOKEN EXPIRED (401)
+                        if status_code == 401:
+                            if attempts < max_attempts:
+                                _LOGGER.warning("401 Unauthorized. Acquiring lock to refresh token...")
+                                
+                                async with self._token_refresh_lock:
+                                    if self.header["Authorization"] != self.data["access_token"]:
+                                         _LOGGER.info("Token refreshed by another thread. Retrying request.")
+                                    else:
+                                        if await self._handle_token_refresh():
+                                            _LOGGER.info("Token refreshed and SAVED. Retrying request.")
+                                        else:
+                                            _LOGGER.error("Token refresh FAILED. Marking auth as broken.")
+                                            self.auth_broken = True
+                                            raise AuthError("Token refresh failed")
+                                
+                                # Retry immediately after refresh
+                                continue
+                            else:
+                                _LOGGER.error("401 Loop detected. Stop retrying.")
+                                raise AuthError("Unauthorized - Retry limit reached")
+                        
+                        # CASE 3: RATE LIMIT (429) or SERVER ERROR (5xx)
+                        # Implement Exponential Backoff
+                        if status_code == 429 or status_code >= 500:
+                            if attempts < max_attempts:
+                                _LOGGER.warning(
+                                    "Error %s detected. Sleeping for %s seconds before retry...", 
+                                    status_code, current_delay
+                                )
+                                await asyncio.sleep(current_delay)
+                                current_delay *= 2  # Double the delay for next attempt
+                                continue
+                            else:
+                                if status_code == 429:
+                                    raise RateLimitError(f"Persistent Rate Limit (429) after {max_attempts} attempts")
+                                else:
+                                    raise BticinoApiError(f"Persistent Server Error {status_code} after {max_attempts} attempts")
+
+                        # CASE 4: CLIENT ERRORS (4xx except 401/429/409)
+                        _LOGGER.error("HTTP Client Error %s: %s", status_code, content)
+                        raise BticinoApiError(f"HTTP Client Error {status_code}: {content}")
+
+                except aiohttp.ClientError as e:
+                    _LOGGER.error("Network error during request to %s: %s", url, e)
+                    if attempts < max_attempts:
+                        _LOGGER.debug("Network error. Sleeping %s seconds...", current_delay)
+                        await asyncio.sleep(current_delay)
+                        current_delay *= 2
+                    else:
+                        raise BticinoApiError(f"Network error: {e}")
+                except Exception as e:
+                    # FIX: If it's one of our custom exceptions, re-raise it immediately
+                    # so the Coordinator can handle the specific error type (e.g. Rate Limit)
+                    if isinstance(e, BticinoApiError):
+                        raise e
+                    
+                    # Log only genuine unexpected crashes
+                    _LOGGER.exception("Unexpected error during request to %s", url)
+                    raise e
+            
+            raise BticinoApiError("Request failed - Unknown loop exit")
+
+    async def _handle_token_refresh(self) -> bool:
+        """Handle token refresh and PERSIST it to disk."""
+        try:
+            # Pass self.hass to use the shared session in auth.py
+            access_token, refresh_token, _ = await refresh_access_token(self.hass, self.data)
+            
+            self.data["access_token"] = access_token
+            self.data["refresh_token"] = refresh_token
+            self.header["Authorization"] = access_token
+            
+            entries = self.hass.config_entries.async_entries(DOMAIN)
+            for entry in entries:
+                if entry.data.get("client_id") == self.data.get("client_id"):
+                    self.hass.config_entries.async_update_entry(
+                        entry, 
+                        data={**entry.data, "access_token": access_token, "refresh_token": refresh_token}
+                    )
+                    _LOGGER.info("Successfully saved new token to ConfigEntry storage.")
+                    break
+            
+            return True
+        except Exception as e:
+            _LOGGER.error("Fatal error refreshing token: %s", e)
+            return False
+
+    # --- Public Methods ---
 
     async def check_api_endpoint_health(self) -> bool:
-        """Use /plants endpoint to validate token."""
         url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}{PLANTS}"
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.get(url, headers=self.header) as response:
-                    status_code = response.status
-                    content = await response.text()
-                    if status_code == 200:
-                        _LOGGER.info("Token valid. /plants accessible")
-                        return True
-                    if status_code == 401:
-                        _LOGGER.debug("Unauthorized. Attempt token refresh")
-                        if await self.handle_unauthorized_error(response):
-                            return await self.check_api_endpoint_health()
-                    else:
-                        _LOGGER.error(
-                            "Error during health check. Status code: %s, Content: %s",
-                            status_code,
-                            content,
-                        )
-            except aiohttp.ClientError as e:
-                _LOGGER.error("Error during health check: %s", e)
-        return False
-
-    async def handle_unauthorized_error(self, response: aiohttp.ClientResponse) -> bool:
-        """Head off 401 Unauthorized."""
-        status_code = response.status
-
-        if status_code == 401:
-            _LOGGER.debug("Received 401 Unauthorized error. Attempting token refresh")
-            try:
-                (
-                    access_token,
-                    _,
-                    _,
-                ) = await refresh_access_token(self.data)
-                self.header = {
-                    "Authorization": access_token,
-                    "Ocp-Apim-Subscription-Key": self.data["subscription_key"],
-                    "Content-Type": "application/json",
-                }
-                _LOGGER.debug("Token refresh successful after 401 error")
-                return True
-            except Exception as e:  # pylint: disable=broad-exception-caught
-                _LOGGER.error(
-                    "Token refresh failed after 401 error: %s", e, exc_info=True
-                )
-                return False
-        return False
+        try:
+            response = await self._async_request("GET", url)
+            return response["status_code"] == 200
+        except Exception:
+            return False
 
     async def get_plants(self) -> dict[str, Any]:
-        """Retrieve thermostat plants."""
         url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}{PLANTS}"
-        _LOGGER.info("API CALL: GET %s", url)
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.get(url, headers=self.header) as response:
-                    status_code = response.status
-                    content = await response.text()
-
-                    _LOGGER.info(
-                        "API RESPONSE: GET plants - status=%s, content preview: %s",
-                        status_code,
-                        content[:200],
-                    )
-
-                    if status_code == 200:
-                        try:
-                            data = json.loads(content)
-                            if "plants" not in data:
-                                _LOGGER.error(
-                                    "get_plants - Response missing 'plants' key. "
-                                    "Available keys: %s, response: %s",
-                                    list(data.keys()),
-                                    content,
-                                )
-                                return {
-                                    "status_code": 500,
-                                    "error": f"Invalid response structure. Keys found: {list(data.keys())}",  # pylint: disable=line-too-long
-                                }
-                            return {
-                                "status_code": status_code,
-                                "data": data["plants"],
-                            }
-                        except (KeyError, json.JSONDecodeError) as e:
-                            _LOGGER.error(
-                                "get_plants - Error parsing response: %s, content: %s",
-                                e,
-                                content,
-                                exc_info=True,
-                            )
-                            return {
-                                "status_code": 500,
-                                "error": f"Error parsing response: {e}",
-                            }
-                    if status_code == 401:
-                        _LOGGER.debug(
-                            "get_plants - Received 401, attempting token refresh"
-                        )
-                        # Retry the request on 401 Unauthorized
-                        if await self.handle_unauthorized_error(response):
-                            # Retry the original request
-                            return await self.get_plants()
-                    _LOGGER.error(
-                        "get_plants - HTTP error %s. Content: %s", status_code, content
-                    )
-                    return {
-                        "status_code": status_code,
-                        "error": (
-                            f"Failed get_plants. "
-                            f"Content: {content}, "
-                            f"URL: {url}, "
-                            f"HEADER: {self.header}"
-                        ),
-                    }
-            except aiohttp.ClientError as e:
-                _LOGGER.error("get_plants - Network error: %s", e, exc_info=True)
-                return {
-                    "status_code": 500,
-                    "error": f"Failed get_plants: {e}",
-                }
+        return await self._async_request("GET", url)
 
     async def get_topology(self, plant_id: str) -> dict[str, Any]:
-        """Retrieve thermostat topology."""
         url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}{PLANTS}/{plant_id}{TOPOLOGY}"
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.get(url, headers=self.header) as response:
-                    status_code = response.status
-                    content = await response.text()
+        return await self._async_request("GET", url)
 
-                    _LOGGER.debug(
-                        "get_topology - plant_id: %s, status_code: %s, content preview: %s",
-                        plant_id,
-                        status_code,
-                        content[:200],
-                    )
-
-                    if status_code == 200:
-                        try:
-                            data = json.loads(content)
-                            if "plant" not in data or "modules" not in data["plant"]:
-                                _LOGGER.error(
-                                    "get_topology - Invalid response structure. "
-                                    "plant_id: %s, available keys: %s, response: %s",
-                                    plant_id,
-                                    list(data.keys()),
-                                    content,
-                                )
-                                return {
-                                    "status_code": 500,
-                                    "error": f"Invalid response structure. Keys found: {list(data.keys())}",  # pylint: disable=line-too-long
-                                }
-                            return {
-                                "status_code": status_code,
-                                "data": data["plant"]["modules"],
-                            }
-                        except (KeyError, json.JSONDecodeError) as e:
-                            _LOGGER.error(
-                                "get_topology - Error parsing response: %s. "
-                                "plant_id: %s, content: %s",
-                                e,
-                                plant_id,
-                                content,
-                                exc_info=True,
-                            )
-                            return {
-                                "status_code": 500,
-                                "error": f"Error parsing response: {e}",
-                            }
-                    if status_code == 401:
-                        _LOGGER.debug(
-                            "get_topology - Received 401 for plant_id: %s, attempting token refresh",  # pylint: disable=line-too-long
-                            plant_id,
-                        )
-                        # Retry the request on 401 Unauthorized
-                        if await self.handle_unauthorized_error(response):
-                            # Retry the original request
-                            return await self.get_topology(plant_id)
-                    _LOGGER.error(
-                        "get_topology - HTTP error %s for plant_id: %s. Content: %s",
-                        status_code,
-                        plant_id,
-                        content,
-                    )
-                    return {
-                        "status_code": status_code,
-                        "error": f"Failed to get topology. HTTP {status_code}: {content}",
-                    }
-            except aiohttp.ClientError as e:
-                _LOGGER.error(
-                    "get_topology - Network error for plant_id: %s. Error: %s",
-                    plant_id,
-                    e,
-                    exc_info=True,
-                )
-                return {
-                    "status_code": 500,
-                    "error": f"Failed to get topology: {e}",
-                }
+    async def get_chronothermostat_status(self, plant_id: str, module_id: str) -> dict[str, Any]:
+        url = (
+            f"{DEFAULT_API_BASE_URL}"
+            f"{THERMOSTAT_API_ENDPOINT}/chronothermostat/thermoregulation/"
+            f"addressLocation{PLANTS}/{plant_id}/modules/parameter/id/value/{module_id}"
+        )
+        return await self._async_request("GET", url)
 
     async def set_chronothermostat_status(
         self, plant_id: str, module_id: str, data: dict[str, Any]
     ) -> dict[str, Any]:
-        """Set thermostat status."""
         url = (
             f"{DEFAULT_API_BASE_URL}"
             f"{THERMOSTAT_API_ENDPOINT}/chronothermostat/thermoregulation/"
             f"addressLocation{PLANTS}/{plant_id}/modules/parameter/id/value/{module_id}"
         )
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.post(
-                    url, headers=self.header, data=json.dumps(data)
-                ) as response:
-                    status_code = response.status
-                    content = await response.text()
+        return await self._async_request("POST", url, payload=data)
 
-                    if status_code == 401:
-                        # Retry the request on 401 Unauthorized
-                        if await self.handle_unauthorized_error(response):
-                            # Retry the original request
-                            return await self.set_chronothermostat_status(
-                                plant_id, module_id, data
-                            )
-
-                    return {"status_code": status_code, "text": content}
-            except aiohttp.ClientError as e:
-                return {
-                    "status_code": 500,
-                    "error": (f"Error during set_chronothermostat_status request: {e}"),
-                }
-
-    async def get_chronothermostat_status(
-        self, plant_id: str, module_id: str
-    ) -> dict[str, Any]:
-        """Get thermostat status."""
+    async def get_chronothermostat_programlist(self, plant_id: str, module_id: str) -> dict[str, Any]:
         url = (
             f"{DEFAULT_API_BASE_URL}"
             f"{THERMOSTAT_API_ENDPOINT}/chronothermostat/thermoregulation/"
-            f"addressLocation{PLANTS}/{plant_id}/modules/parameter/id/value/{module_id}"
+            f"addressLocation{PLANTS}/{plant_id}/modules/parameter/id/value/{module_id}/programlist"
         )
-        _LOGGER.info(
-            "API CALL: GET chronothermostat_status - plant=%s, module=%s",
-            plant_id,
-            module_id,
-        )
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.get(url, headers=self.header) as response:
-                    status_code = response.status
-                    content = await response.text()
-                    _LOGGER.info(
-                        "API RESPONSE: GET chronothermostat_status - "
-                        "status=%s, content preview: %s",
-                        status_code,
-                        content[:300] if len(content) > 300 else content,
-                    )
-                    if status_code == 401:
-                        # Retry the request on 401 Unauthorized
-                        if await self.handle_unauthorized_error(response):
-                            # Retry the original request
-                            return await self.get_chronothermostat_status(
-                                plant_id, module_id
-                            )
-                    return {"status_code": status_code, "data": json.loads(content)}
-            except aiohttp.ClientError as e:
-                return {
-                    "status_code": 500,
-                    "error": f"Error during get_chronothermostat_status request: {e}",
-                }
-
-    async def get_chronothermostat_measures(
-        self, plant_id: str, module_id: str
-    ) -> dict[str, Any]:
-        """Get thermostat measures."""
-        url = (
-            f"{DEFAULT_API_BASE_URL}"
-            f"{THERMOSTAT_API_ENDPOINT}/chronothermostat/thermoregulation/"
-            f"addressLocation{PLANTS}/{plant_id}/modules/parameter/id/value/{module_id}/measures"
-        )
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.get(url, headers=self.header) as response:
-                    status_code = response.status
-                    content = await response.text()
-                    if status_code == 401:
-                        # Retry the request on 401 Unauthorized
-                        if await self.handle_unauthorized_error(response):
-                            # Retry the original request
-                            return await self.get_chronothermostat_measures(
-                                plant_id, module_id
-                            )
-                    return {"status_code": status_code, "data": json.loads(content)}
-            except aiohttp.ClientError as e:
-                return {
-                    "status_code": 500,
-                    "error": f"Error during get_chronothermostat_measures request: {e}",
-                }
-
-    async def get_chronothermostat_programlist(  # pylint: disable=too-many-return-statements
-        self, plant_id: str, module_id: str
-    ) -> dict[str, Any]:
-        """Get thermostat programlist."""
-        url = (
-            f"{DEFAULT_API_BASE_URL}"
-            f"{THERMOSTAT_API_ENDPOINT}/chronothermostat/thermoregulation/"
-            f"addressLocation{PLANTS}/{plant_id}/modules/parameter/id/value/{module_id}/"
-            f"programlist"
-        )
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.get(url, headers=self.header) as response:
-                    status_code = response.status
-                    content = await response.text()
-
-                    _LOGGER.debug(
-                        "get_chronothermostat_programlist - plant_id: %s, module_id: %s, "
-                        "status_code: %s",
-                        plant_id,
-                        module_id,
-                        status_code,
-                    )
-                    _LOGGER.debug(
-                        "get_chronothermostat_programlist - content: %s", content[:500]
-                    )
-
-                    if status_code == 401:
-                        # Retry the request on 401 Unauthorized
-                        if await self.handle_unauthorized_error(response):
-                            # Retry the original request
-                            return await self.get_chronothermostat_programlist(
-                                plant_id, module_id
-                            )
-
-                    if status_code != 200:
-                        _LOGGER.error(
-                            "get_chronothermostat_programlist - HTTP error. "
-                            "plant_id: %s, module_id: %s, status: %s, content: %s",
-                            plant_id,
-                            module_id,
-                            status_code,
-                            content,
-                        )
-                        return {
-                            "status_code": status_code,
-                            "error": f"HTTP {status_code}: {content}",
-                        }
-
-                    try:
-                        data = json.loads(content)
-                        _LOGGER.debug(
-                            "get_chronothermostat_programlist - parsed JSON keys: %s",
-                            list(data.keys()),
-                        )
-
-                        if "chronothermostats" not in data:
-                            _LOGGER.error(
-                                "get_chronothermostat_programlist - Response missing 'chronothermostats' key. "  # pylint: disable=line-too-long
-                                "plant_id: %s, module_id: %s, available keys: %s, response: %s",
-                                plant_id,
-                                module_id,
-                                list(data.keys()),
-                                content,
-                            )
-                            return {
-                                "status_code": 500,
-                                "error": f"Invalid response structure. Keys found: {list(data.keys())}",  # pylint: disable=line-too-long
-                            }
-
-                        if not data["chronothermostats"]:
-                            _LOGGER.warning(
-                                "get_chronothermostat_programlist - Empty chronothermostats list. "
-                                "plant_id: %s, module_id: %s",
-                                plant_id,
-                                module_id,
-                            )
-                            return {
-                                "status_code": 200,
-                                "data": [],
-                            }
-
-                        return {
-                            "status_code": status_code,
-                            "data": data["chronothermostats"][0]["programs"],
-                        }
-                    except (KeyError, IndexError, json.JSONDecodeError) as e:
-                        _LOGGER.error(
-                            "get_chronothermostat_programlist - Error parsing response: %s. "
-                            "plant_id: %s, module_id: %s, content: %s",
-                            e,
-                            plant_id,
-                            module_id,
-                            content,
-                            exc_info=True,
-                        )
-                        return {
-                            "status_code": 500,
-                            "error": f"Error parsing response: {e}",
-                        }
-
-            except aiohttp.ClientError as e:
-                _LOGGER.error(
-                    "get_chronothermostat_programlist - Network error: %s. "
-                    "plant_id: %s, module_id: %s",
-                    e,
-                    plant_id,
-                    module_id,
-                    exc_info=True,
-                )
-                return {
-                    "status_code": 500,
-                    "error": f"Error during get_chronothermostat_programlist request: {e}",
-                }
+        return await self._async_request("GET", url)
 
     async def get_subscriptions_c2c_notifications(self) -> dict[str, Any]:
-        """Get C2C subscriptions."""
         url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}/subscription"
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.get(url, headers=self.header) as response:
-                    status_code = response.status
-                    content = await response.text()
-                    if status_code == 401:
-                        # Retry the request on 401 Unauthorized
-                        if await self.handle_unauthorized_error(response):
-                            # Retry the original request
-                            return await self.get_subscriptions_c2c_notifications()
+        return await self._async_request("GET", url)
 
-                    return {
-                        "status_code": status_code,
-                        "data": json.loads(content) if status_code == 200 else content,
-                    }
-            except aiohttp.ClientError as e:
-                return {
-                    "status_code": 500,
-                    "error": f"Error during get_subscriptions_C2C_notifications request: {e}",
-                }
-
-    async def set_subscribe_c2c_notifications(
-        self, plant_id: str, data: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Add C2C subscriptions."""
+    async def set_subscribe_c2c_notifications(self, plant_id: str, data: dict[str, Any]) -> dict[str, Any]:
         url = f"{DEFAULT_API_BASE_URL}{THERMOSTAT_API_ENDPOINT}{PLANTS}/{plant_id}/subscription"
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.post(
-                    url, headers=self.header, data=json.dumps(data)
-                ) as response:
-                    status_code = response.status
-                    content = await response.text()
-                    if status_code == 401:
-                        # Retry the request on 401 Unauthorized
-                        if await self.handle_unauthorized_error(response):
-                            # Retry the original request
-                            return await self.set_subscribe_c2c_notifications(
-                                plant_id, data
-                            )
+        return await self._async_request("POST", url, payload=data)
 
-                    return {"status_code": status_code, "text": json.loads(content)}
-            except aiohttp.ClientError as e:
-                return {
-                    "status_code": 500,
-                    "error": f"Error during set_subscribe_C2C_notifications request: {e}",
-                }
-
-    async def delete_subscribe_c2c_notifications(
-        self, plant_id: str, subscription_id: str
-    ) -> dict[str, Any]:
-        """Remove C2C subscriptions."""
-        if not subscription_id or subscription_id == "None":
-            _LOGGER.error(
-                "Cannot delete subscription: subscription_id is empty or None"
-            )
-            return {
-                "status_code": 400,
-                "error": "Invalid subscription_id (empty or None)",
-            }
-
+    async def delete_subscribe_c2c_notifications(self, plant_id: str, subscription_id: str) -> dict[str, Any]:
         url = (
             f"{DEFAULT_API_BASE_URL}"
             f"{THERMOSTAT_API_ENDPOINT}"
             f"{PLANTS}/{plant_id}/subscription/{subscription_id}"
         )
-
-        _LOGGER.debug(
-            "DELETE C2C subscription - URL: %s, plant_id: %s, subscription_id: %s",
-            url,
-            plant_id,
-            subscription_id,
-        )
-
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.delete(url, headers=self.header) as response:
-                    status_code = response.status
-                    content = await response.text()
-
-                    _LOGGER.debug(
-                        "DELETE C2C response - Status: %s, Content: %s",
-                        status_code,
-                        content[:200] if content else "empty",
-                    )
-
-                    if status_code == 401:
-                        # Retry the request on 401 Unauthorized
-                        if await self.handle_unauthorized_error(response):
-                            # Retry the original request
-                            return await self.delete_subscribe_c2c_notifications(
-                                plant_id, subscription_id
-                            )
-
-                    return {"status_code": status_code, "text": content}
-            except aiohttp.ClientError as e:
-                _LOGGER.error(
-                    "HTTP error during delete_subscribe_c2c_notifications: %s",
-                    e,
-                    exc_info=True,
-                )
-                return {
-                    "status_code": 500,
-                    "error": f"Error during delete_subscribe_C2C_notifications request: {e}",
-                }
+        return await self._async_request("DELETE", url)
