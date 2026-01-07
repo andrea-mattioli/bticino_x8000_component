@@ -2,7 +2,7 @@
 
 import logging
 
-from homeassistant.components.button import ButtonDeviceClass, ButtonEntity
+from homeassistant.components.button import ButtonEntity, ButtonDeviceClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
@@ -36,7 +36,7 @@ async def async_setup_entry(
 class BticinoForceTokenButton(CoordinatorEntity, ButtonEntity):
     """
     Button entity to force a manual Token Refresh.
-
+    
     Useful for troubleshooting:
     If the integration stops updating but doesn't show specific errors (or shows 401s that don't auto-fix),
     pressing this button forces a complete re-authentication flow against the Legrand cloud.
@@ -46,9 +46,7 @@ class BticinoForceTokenButton(CoordinatorEntity, ButtonEntity):
     _attr_name = "Force Token Refresh"
     _attr_icon = "mdi:key-refresh"
     _attr_entity_category = EntityCategory.CONFIG
-    _attr_device_class = (
-        ButtonDeviceClass.RESTART
-    )  # 'RESTART' conveys the idea of resetting a connection
+    _attr_device_class = ButtonDeviceClass.RESTART  # 'RESTART' conveys the idea of resetting a connection
 
     def __init__(self, coordinator: BticinoCoordinator) -> None:
         """Initialize the button entity."""
@@ -71,7 +69,7 @@ class BticinoForceTokenButton(CoordinatorEntity, ButtonEntity):
     def available(self) -> bool:
         """
         OVERRIDE: Always available.
-        CRITICAL: If the API is broken (Coordinator Failed), the user MUST be able
+        CRITICAL: If the API is broken (Coordinator Failed), the user MUST be able 
         to press this button to try and fix the Token!
         """
         return True
@@ -79,6 +77,6 @@ class BticinoForceTokenButton(CoordinatorEntity, ButtonEntity):
     async def async_press(self) -> None:
         """Handle the button press."""
         _LOGGER.info("User pressed 'Force Token Refresh' button.")
-
+        
         # Call the public method we added to the coordinator
         await self.coordinator.async_force_token_refresh()

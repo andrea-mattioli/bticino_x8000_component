@@ -159,7 +159,7 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 # Fetch and display the list of thermostats
                 plants_data = await self.bticino_api.get_plants()
                 _LOGGER.info("PLANTS_DATA: %s", plants_data)
-
+                
                 # Handle API wrapper response structure
                 if plants_data.get("status_code") == 200:
                     thermostat_options: dict[Any, Any] = {}
@@ -167,16 +167,16 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     plants_list = plants_data.get("data", [])
                     # Verify structure
                     if isinstance(plants_list, dict) and "plants" in plants_list:
-                        plants_list = plants_list["plants"]
-
+                         plants_list = plants_list["plants"]
+                    
                     plant_ids = list({plant["id"] for plant in plants_list})
                     _LOGGER.info("PLANTS_LIST: %s", plant_ids)
-
+                    
                     for plant_id in plant_ids:
                         _LOGGER.debug("Processing plant_id: %s", plant_id)
                         try:
                             topologies = await self.bticino_api.get_topology(plant_id)
-
+                            
                             if topologies.get("status_code") != 200:
                                 continue
 
@@ -185,7 +185,7 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             if "plant" in topo_data:
                                 modules = topo_data["plant"].get("modules", [])
                             else:
-                                modules = topo_data  # Fallback
+                                modules = topo_data # Fallback
 
                             if plant_id not in thermostat_options:
                                 thermostat_options[plant_id] = []
@@ -259,11 +259,11 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Wrapper handling
             data = programs.get("data", {})
             if "chronothermostats" in data:
-                chrono_list = data["chronothermostats"]
-                if chrono_list:
-                    programs_list = chrono_list[0].get("programs", [])
-                    return [p for p in programs_list if p.get("number") != 0]
-
+                 chrono_list = data["chronothermostats"]
+                 if chrono_list:
+                      programs_list = chrono_list[0].get("programs", [])
+                      return [p for p in programs_list if p.get("number") != 0]
+            
             return []
         return None
 

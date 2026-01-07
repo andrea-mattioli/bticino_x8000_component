@@ -29,7 +29,7 @@ async def exchange_code_for_tokens(
 
     # FIX: Uso della sessione condivisa (Best Practice HA)
     session = async_get_clientsession(hass)
-
+    
     try:
         async with session.post(token_url, data=payload) as response:
             status_code = response.status
@@ -66,18 +66,15 @@ async def exchange_code_for_tokens(
     # FIX CODE REVIEW: Controllo simmetrico esistenza access_token
     if not token_data.get("access_token"):
         _LOGGER.error(
-            "exchange_code_for_tokens - Missing access_token in response: %s",
-            token_data,
+            "exchange_code_for_tokens - Missing access_token in response: %s", token_data
         )
         raise ValueError("Missing access_token in token exchange response")
 
     access_token = "Bearer " + token_data.get("access_token")
     refresh_token = token_data.get("refresh_token")
     expires_in = token_data.get("expires_in")
-
-    expires_ts = (
-        int(time.time()) + int(expires_in) if expires_in else int(time.time()) + 3600
-    )
+    
+    expires_ts = int(time.time()) + int(expires_in) if expires_in else int(time.time()) + 3600
     access_token_expires_on = dt_util.utc_from_timestamp(expires_ts)
 
     return access_token, refresh_token, access_token_expires_on

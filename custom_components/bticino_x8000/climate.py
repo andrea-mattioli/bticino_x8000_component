@@ -1,8 +1,8 @@
 """Climate platform for Bticino X8000."""
 
 import logging
-from datetime import timedelta
 from typing import Any
+from datetime import timedelta
 
 from homeassistant.components.climate import (
     ClimateEntity,
@@ -17,11 +17,10 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from .const import DEFAULT_MAX_TEMP, DEFAULT_MIN_TEMP, DOMAIN
+from .const import DOMAIN, DEFAULT_MAX_TEMP, DEFAULT_MIN_TEMP
 from .coordinator import BticinoCoordinator
 
 _LOGGER = logging.getLogger(__name__)
-
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -30,16 +29,16 @@ async def async_setup_entry(
 ) -> None:
     """Set up Bticino X8000 climate entities."""
     coordinator: BticinoCoordinator = hass.data[DOMAIN][config_entry.entry_id]
-
+    
     entities = []
     data = config_entry.data
-
+    
     # We iterate over the stored config data, NOT the coordinator data.
     # This guarantees entities are created even if the API is unreachable at boot.
     for plant_data in data["selected_thermostats"]:
         plant_id = list(plant_data.keys())[0]
         thermo_data = list(plant_data.values())[0]
-
+        
         entities.append(
             BticinoX8000Climate(
                 coordinator=coordinator,
@@ -47,7 +46,7 @@ async def async_setup_entry(
                 thermo_data=thermo_data,
             )
         )
-
+    
     async_add_entities(entities)
 
 
@@ -65,7 +64,7 @@ class BticinoX8000Climate(CoordinatorEntity, ClimateEntity):
     _attr_max_temp = DEFAULT_MAX_TEMP
     _attr_target_temperature_step = 0.1
     _attr_has_entity_name = True
-    _attr_name = None  # Use device name
+    _attr_name = None # Use device name
 
     def __init__(
         self,
@@ -79,16 +78,16 @@ class BticinoX8000Climate(CoordinatorEntity, ClimateEntity):
         self._topology_id = thermo_data.get("id")
         self._device_name = thermo_data.get("name")
         self._attr_unique_id = f"{self._topology_id}_climate"
-
+        
         self._programs_name = thermo_data.get("programs", [])
-
+        
         # Initialize attributes with default safe values to prevent AttributeError
         # if the coordinator data is not yet available.
         self._attr_hvac_mode = HVACMode.OFF
         self._attr_hvac_action = HVACAction.OFF
         self._attr_current_temperature = None
         self._attr_target_temperature = None
-
+        
         # Initial state calculation (will overwrite defaults if data exists)
         self._update_state_from_coordinator()
 
@@ -118,7 +117,7 @@ class BticinoX8000Climate(CoordinatorEntity, ClimateEntity):
 
         # Get data specific for this thermostat
         data = self.coordinator.data.get(self._topology_id)
-
+        
         if not data:
             return
 
@@ -134,7 +133,7 @@ class BticinoX8000Climate(CoordinatorEntity, ClimateEntity):
             val = set_point.get("value")
             if val is not None:
                 self._attr_target_temperature = float(val)
-
+            
             # 3. Humidity (Optional extra attribute)
             hygrometer = data.get("hygrometer", {}).get("measures", [{}])[0]
             # Not a standard climate attribute, usually ignored or needs custom property
@@ -179,9 +178,7 @@ class BticinoX8000Climate(CoordinatorEntity, ClimateEntity):
         """Set new target hvac mode."""
         # Check safety before accessing data (in case this is called blindly)
         if self.coordinator.data is None:
-            _LOGGER.warning(
-                "Cannot set HVAC mode: Data not available (Rate Limit active)"
-            )
+            _LOGGER.warning("Cannot set HVAC mode: Data not available (Rate Limit active)")
             return
 
         # Read current function/program from coordinator data to preserve them
@@ -189,34 +186,38 @@ class BticinoX8000Climate(CoordinatorEntity, ClimateEntity):
         function = curr_data.get("function", "heating")
         programs = curr_data.get("programs", [{"number": 1}])
         current_program = programs[0]["number"] if programs else 1
-
+        
         payload = {}
-
+        
         if hvac_mode == HVACMode.AUTO:
             payload = {
                 "function": function,
                 "mode": "automatic",
-                "programs": [{"number": current_program}],
+                "programs": [{"number": current_program}]
             }
         elif hvac_mode == HVACMode.OFF:
-            payload = {"function": function, "mode": "off"}
+            payload = {
+                "function": function,
+                "mode": "off"
+            }
         elif hvac_mode in [HVACMode.HEAT, HVACMode.COOL]:
             # Determine function based on requested mode
             target_function = "heating" if hvac_mode == HVACMode.HEAT else "cooling"
-
+            
             # Safety fallback if target_temp is None
-            target_val = (
-                self.target_temperature if self.target_temperature is not None else 20.0
-            )
-
+            target_val = self.target_temperature if self.target_temperature is not None else 20.0
+            
             payload = {
                 "function": target_function,
                 "mode": "manual",
-                "setPoint": {"value": target_val, "unit": self.temperature_unit},
+                "setPoint": {
+                    "value": target_val, 
+                    "unit": self.temperature_unit
+                }
             }
 
         _LOGGER.info("Setting HVAC Mode for %s: %s", self._device_name, hvac_mode)
-
+        
         await self.coordinator.api.set_chronothermostat_status(
             self._plant_id, self._topology_id, payload
         )
@@ -230,22 +231,23 @@ class BticinoX8000Climate(CoordinatorEntity, ClimateEntity):
             return
 
         if self.coordinator.data is None:
-            _LOGGER.warning(
-                "Cannot set temperature: Data not available (Rate Limit active)"
-            )
-            return
+             _LOGGER.warning("Cannot set temperature: Data not available (Rate Limit active)")
+             return
 
         curr_data = self.coordinator.data.get(self._topology_id, {})
         function = curr_data.get("function", "heating")
-
+        
         payload = {
             "function": function,
             "mode": "manual",
-            "setPoint": {"value": temp, "unit": self.temperature_unit},
+            "setPoint": {
+                "value": temp,
+                "unit": self.temperature_unit
+            }
         }
-
+        
         _LOGGER.info("Setting Temperature for %s: %s", self._device_name, temp)
-
+        
         await self.coordinator.api.set_chronothermostat_status(
             self._plant_id, self._topology_id, payload
         )

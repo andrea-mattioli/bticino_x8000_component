@@ -63,15 +63,15 @@ CONF_DEBOUNCE = "webhook_debounce"
 CONF_NOTIFY_ERRORS = "notify_errors"
 
 # Default Values
-DEFAULT_UPDATE_INTERVAL = 15  # Minutes (Standard polling)
-DEFAULT_COOL_DOWN = 60  # Minutes (Wait time after Rate Limit ban)
-DEFAULT_DEBOUNCE = 1.0  # Seconds (Wait time to group webhook events)
-DEFAULT_NOTIFY_ERRORS = True  # Boolean (Show persistent notification on error)
+DEFAULT_UPDATE_INTERVAL = 15     # Minutes (Standard polling)
+DEFAULT_COOL_DOWN = 60           # Minutes (Wait time after Rate Limit ban)
+DEFAULT_DEBOUNCE = 1.0           # Seconds (Wait time to group webhook events)
+DEFAULT_NOTIFY_ERRORS = True     # Boolean (Show persistent notification on error)
 
 # Boundaries for Number Entities
-MIN_UPDATE_INTERVAL = 1  # Minimum 1 minute
-MAX_UPDATE_INTERVAL = 120  # Maximum 2 hours
-MIN_COOL_DOWN = 15  # Minimum 15 minutes
-MAX_COOL_DOWN = 180  # Maximum 3 hours
-MIN_DEBOUNCE = 0.5  # Minimum 0.5 seconds
-MAX_DEBOUNCE = 5.0  # Maximum 5.0 seconds
+MIN_UPDATE_INTERVAL = 1          # Minimum 1 minute
+MAX_UPDATE_INTERVAL = 120        # Maximum 2 hours
+MIN_COOL_DOWN = 15               # Minimum 15 minutes
+MAX_COOL_DOWN = 180              # Maximum 3 hours
+MIN_DEBOUNCE = 0.5               # Minimum 0.5 seconds
+MAX_DEBOUNCE = 5.0               # Maximum 5.0 seconds
