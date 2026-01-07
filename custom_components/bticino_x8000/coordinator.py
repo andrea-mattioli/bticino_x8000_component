@@ -28,9 +28,6 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-# REMOVED: Static constants NORMAL_INTERVAL and COOL_DOWN_INTERVAL 
-# are now dynamic properties of the class (self.normal_interval, self.cool_down_interval).
-
 # Global ID for persistent notifications to avoid stacking multiple alerts.
 # If a new error occurs, the existing notification is updated/overwritten.
 NOTIFICATION_ID = "bticino_rate_limit_alert"
@@ -95,6 +92,11 @@ class BticinoCoordinator(DataUpdateCoordinator):
         # Debounce and Diagnostics initialization
         self._last_webhook_mono = 0.0
         self._last_webhook_time = None
+        
+        # IMPROVEMENT: Explicit flag for Rate Limit state.
+        # This allows other components (like number.py) to know if we are currently
+        # in a "Ban" state without guessing based on interval times.
+        self.in_cool_down = False
 
     async def _async_update_data(self) -> dict[str, Any]:
         """
@@ -134,12 +136,15 @@ class BticinoCoordinator(DataUpdateCoordinator):
                         self._trigger_rate_limit_abort(plant_id, topology_id, "HTTP 429 Status Code returned")
 
                     if status_code == 200:
-                        # SUCCESS: Check if we need to recover from Cool Down mode
-                        # UPDATED: Check against dynamic self.cool_down_interval
-                        if self.update_interval == self.cool_down_interval:
+                        # SUCCESS: Check if we need to recover from Cool Down mode.
+                        # IMPROVEMENT: Check the explicit flag instead of comparing intervals.
+                        if self.in_cool_down:
                             _LOGGER.info("API request successful. Resetting update interval.")
-                            # UPDATED: Restore user-configured normal interval
+                            
+                            # Reset flag and restore user-configured normal interval
+                            self.in_cool_down = False
                             self.update_interval = self.normal_interval
+                            
                             # Dismiss the global persistent notification automatically if we recovered
                             persistent_notification.dismiss(self.hass, notification_id=NOTIFICATION_ID)
 
@@ -198,6 +203,9 @@ class BticinoCoordinator(DataUpdateCoordinator):
             topology_id, message
         )
         
+        # IMPROVEMENT: Set explicit state flag
+        self.in_cool_down = True
+        
         # 1. Fire Event for User Notification (Home Assistant Bus)
         # This is useful for advanced automations.
         self.hass.bus.async_fire(
@@ -233,6 +241,11 @@ class BticinoCoordinator(DataUpdateCoordinator):
         # UPDATED: Use the dynamic variable from configuration
         self.update_interval = self.cool_down_interval
         
+        # CRITICAL FIX: Update Diagnostic Sensors BEFORE raising exception.
+        # This ensures the API Call Count in the UI reflects the failed attempt immediately,
+        # instead of waiting for a successful cycle (which might be hours away).
+        self.notify_listeners_only()
+
         # 4. RAISE EXCEPTION TO KILL THE LOOP IMMEDIATELY
         # Raising UpdateFailed tells Home Assistant that the update failed.
         # This stops the 'for' loop in _async_update_data and marks entities as Unavailable.
@@ -252,6 +265,16 @@ class BticinoCoordinator(DataUpdateCoordinator):
             self.api.auth_broken = False
         else:
             _LOGGER.error("Manual token refresh failed.")
+
+    def notify_listeners_only(self) -> None:
+        """
+        Notify listeners (sensors) that internal state/counters changed without fetching API.
+        
+        This is useful for updating diagnostic sensors (like API call counters)
+        immediately after a write operation, without waiting for the next poll.
+        """
+        # Triggers the _handle_coordinator_update method on all registered entities
+        self.async_update_listeners()
 
     def update_from_webhook(self, webhook_data: dict[str, Any]) -> None:
         """

@@ -4,10 +4,12 @@ import asyncio
 import json
 import logging
 from typing import Any
+from datetime import datetime # Added for timestamp tracking
 
 import aiohttp
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.util import dt as dt_util
 
 from .auth import refresh_access_token
 from .const import (
@@ -23,8 +25,11 @@ _LOGGER = logging.getLogger(__name__)
 # Base delay between calls (starting point for exponential backoff)
 API_DELAY_SECONDS = 2.0
 MAX_CONCURRENT_REQUESTS = 1
-# Explicit timeout for HTTP requests (HA Best Practice)
-HTTP_TIMEOUT = 30
+
+# IMPROVEMENT: Granular timeouts (HA Best Practice).
+# Fail fast on connection (10s) but allow processing time (20s total).
+HTTP_TIMEOUT_TOTAL = 20
+HTTP_TIMEOUT_CONNECT = 10
 
 # --- Custom Exceptions Definition ---
 class BticinoApiError(Exception):
@@ -53,8 +58,13 @@ class BticinoX8000Api:
         self._api_semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
         self.auth_broken = False
         
-        # Diagnostic: Internal counter for total API calls made since boot
+        # Diagnostic: Internal counters for telemetry
         self.call_count = 0
+        self.api_success_count = 0
+        self.api_rate_limit_count = 0
+        self.api_auth_fail_count = 0
+        self.api_other_fail_count = 0
+        self.last_call_time = None
         
         # Use Home Assistant's shared session
         self._session = async_get_clientsession(hass)
@@ -67,13 +77,12 @@ class BticinoX8000Api:
         Handles Rate Limiting (Exponential Backoff), Session reuse, and Retries.
         Raises specific exceptions (RateLimitError, AuthError) on failure.
         """
-        # CRITICAL FIX: Increment counter immediately when function is called.
-        # This ensures the UI sensor updates to show activity even if the request 
-        # is later skipped due to auth errors or rate limits.
-        self.call_count += 1
+        # MOVED: The counter increment has been moved inside the loop below 
+        # to track physical requests correctly.
 
         if self.auth_broken:
             _LOGGER.warning("Authentication previously broken. Skipping request to %s", url)
+            self.api_auth_fail_count += 1
             raise AuthError("Authentication is broken")
 
         # ACQUIRE SEMAPHORE (Serialize requests)
@@ -88,10 +97,19 @@ class BticinoX8000Api:
             while attempts < max_attempts:
                 attempts += 1
                 
+                # FIX: Count physical requests (including retries) for accurate Rate Limit tracking
+                # This is now inside the semaphore and retry loop to reflect real server load
+                self.call_count += 1
+                self.last_call_time = dt_util.utcnow()
+                
                 try:
                     request_args = {
                         "headers": self.header,
-                        "timeout": aiohttp.ClientTimeout(total=HTTP_TIMEOUT)
+                        # IMPROVEMENT: Use granular timeout configuration
+                        "timeout": aiohttp.ClientTimeout(
+                            total=HTTP_TIMEOUT_TOTAL, 
+                            connect=HTTP_TIMEOUT_CONNECT
+                        )
                     }
                     if payload:
                         request_args["json"] = payload
@@ -108,6 +126,7 @@ class BticinoX8000Api:
 
                         # CASE 1: SUCCESS (200 OK, 201 Created, 409 Conflict)
                         if status_code in (200, 201, 409):
+                            self.api_success_count += 1
                             try:
                                 return {"status_code": status_code, "data": json.loads(content)}
                             except json.JSONDecodeError:
@@ -127,18 +146,21 @@ class BticinoX8000Api:
                                         else:
                                             _LOGGER.error("Token refresh FAILED. Marking auth as broken.")
                                             self.auth_broken = True
+                                            self.api_auth_fail_count += 1
                                             raise AuthError("Token refresh failed")
                                 
                                 # Retry immediately after refresh
                                 continue
                             else:
                                 _LOGGER.error("401 Loop detected. Stop retrying.")
+                                self.api_auth_fail_count += 1
                                 raise AuthError("Unauthorized - Retry limit reached")
                         
                         # CASE 3: RATE LIMIT (429) - FATAL IMMEDIATE STOP
                         # Logic changed: Do NOT retry on 429. This prevents extending the ban.
                         if status_code == 429:
                             _LOGGER.error("429 Rate Limit Detected on attempt %s. ABORTING RETRIES.", attempts)
+                            self.api_rate_limit_count += 1
                             raise RateLimitError(f"Persistent Rate Limit (429) detected")
 
                         # CASE 4: SERVER ERROR (5xx)
@@ -153,10 +175,12 @@ class BticinoX8000Api:
                                 current_delay *= 2  # Double the delay for next attempt
                                 continue
                             else:
+                                self.api_other_fail_count += 1
                                 raise BticinoApiError(f"Persistent Server Error {status_code} after {max_attempts} attempts")
 
                         # CASE 5: CLIENT ERRORS (4xx except 401/429/409)
                         _LOGGER.error("HTTP Client Error %s: %s", status_code, content)
+                        self.api_other_fail_count += 1
                         raise BticinoApiError(f"HTTP Client Error {status_code}: {content}")
 
                 except aiohttp.ClientError as e:
@@ -166,6 +190,7 @@ class BticinoX8000Api:
                         await asyncio.sleep(current_delay)
                         current_delay *= 2
                     else:
+                        self.api_other_fail_count += 1
                         raise BticinoApiError(f"Network error: {e}")
                 except Exception as e:
                     # FIX: If it's one of our custom exceptions, re-raise it immediately
@@ -175,8 +200,10 @@ class BticinoX8000Api:
                     
                     # Log only genuine unexpected crashes
                     _LOGGER.exception("Unexpected error during request to %s", url)
+                    self.api_other_fail_count += 1
                     raise e
             
+            self.api_other_fail_count += 1
             raise BticinoApiError("Request failed - Unknown loop exit")
 
     async def _handle_token_refresh(self) -> bool:

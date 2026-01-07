@@ -1,6 +1,7 @@
 """Webhook handler for Bticino X8000."""
 
 import logging
+import secrets  # Added for request tracing
 
 from aiohttp.web import Request, Response
 from homeassistant.components.webhook import async_register as webhook_register
@@ -39,7 +40,24 @@ class BticinoX8000WebhookHandler:
             _LOGGER.error("Error parsing webhook JSON: %s", err)
             return Response(text="Bad Request", status=400)
 
-        _LOGGER.debug("WEBHOOK RECEIVED: %s", data)
+        # IMPROVEMENT: Request Tracing
+        # Generate a short unique ID to trace this specific webhook event in logs
+        request_id = secrets.token_hex(4)
+
+        # IMPROVEMENT: Strict Validation
+        # Ensure payload is a dictionary to prevent AttributeErrors later
+        if not isinstance(data, dict):
+            _LOGGER.warning("[%s] Webhook payload is not a dictionary: %s", request_id, type(data))
+            # Return 200 OK to acknowledge receipt and prevent retries from the server
+            return Response(text="OK", status=200)
+
+        # IMPROVEMENT: Basic Content Filter
+        # Check for expected keys to filter out noise/garbage
+        if "chronothermostats" not in data and "data" not in data and "plant" not in data:
+            _LOGGER.debug("[%s] Webhook ignored: Unrecognized structure", request_id)
+            return Response(text="OK", status=200)
+
+        _LOGGER.debug("[%s] WEBHOOK RECEIVED: %s", request_id, data)
 
         # 2. Update Coordinators
         # Instead of using dispatcher, we push data directly to the coordinator.
@@ -55,9 +73,9 @@ class BticinoX8000WebhookHandler:
                     found_coordinator = True
             
             if not found_coordinator:
-                _LOGGER.warning("Received webhook but no active coordinator found to handle it.")
+                _LOGGER.warning("[%s] Received webhook but no active coordinator found to handle it.", request_id)
         else:
-            _LOGGER.warning("Received webhook but Bticino integration is not loaded.")
+            _LOGGER.warning("[%s] Received webhook but Bticino integration is not loaded.", request_id)
 
         return Response(text="OK", status=200)
 

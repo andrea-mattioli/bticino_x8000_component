@@ -15,6 +15,7 @@ from homeassistant.helpers.device_registry import DeviceEntryType
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .const import (
     DOMAIN,
@@ -83,16 +84,54 @@ class BticinoBaseNumber(CoordinatorEntity, NumberEntity):
         """
         return True
 
-    async def _update_config_entry(self, key: str, value: float) -> None:
-        """Helper to save the new value to the Config Entry options (disk)."""
+    @property
+    def extra_state_attributes(self) -> dict:
+        """
+        IMPROVEMENT: Add debug attributes.
+        This allows troubleshooting configuration changes (timestamps and raw values)
+        without needing to check the logs.
+        """
+        if not _LOGGER.isEnabledFor(logging.DEBUG):
+            return {}
+        
+        return {
+            "_last_set_value_native": self.native_value,
+            "_last_debug_timestamp": dt_util.utcnow().isoformat(),
+            "_active_interval_minutes": self.coordinator.update_interval.total_seconds() / 60,
+        }
+
+    async def _update_config_entry(self, key: str, value: float, force_refresh: bool = False) -> None:
+        """
+        Helper to save the new value to the Config Entry options (disk).
+        
+        Args:
+            key: Config key to update.
+            value: New value.
+            force_refresh: If True, triggers an API refresh even if in Cool Down mode.
+        """
         new_options = dict(self.coordinator.entry.options)
         new_options[key] = value
         
-        await self.hass.config_entries.async_update_entry(
+        # self.hass.config_entries.async_update_entry returns a bool, not a coroutine.
+        self.hass.config_entries.async_update_entry(
             self.coordinator.entry, 
             options=new_options
         )
+        
         self.async_write_ha_state()
+
+        # IMPROVEMENT: Smart Refresh Logic
+        # 1. If force_refresh is True (e.g. changing Cool Down settings), we refresh immediately.
+        # 2. If NOT in Cool Down, we refresh to apply new normal interval.
+        # 3. If in Cool Down and force_refresh is False, we skip to avoid useless API calls.
+        in_cool_down = getattr(self.coordinator, "in_cool_down", False)
+        
+        if force_refresh or not in_cool_down:
+            _LOGGER.debug(
+                "Triggering refresh. Force: %s, In CoolDown: %s", 
+                force_refresh, in_cool_down
+            )
+            await self.coordinator.async_request_refresh()
 
 
 class BticinoUpdateIntervalNumber(BticinoBaseNumber):
@@ -113,8 +152,13 @@ class BticinoUpdateIntervalNumber(BticinoBaseNumber):
 
     @property
     def native_value(self) -> float:
-        """Return the current normal_interval in minutes."""
-        return self.coordinator.normal_interval.total_seconds() / 60
+        """
+        Return the ACTIVE polling interval in minutes.
+        We return 'self.coordinator.update_interval' instead of 'normal_interval'. 
+        If the system is in Cool Down (Ban), this will correctly show 60 minutes
+        instead of the configured 15, reflecting the real system behavior.
+        """
+        return self.coordinator.update_interval.total_seconds() / 60
 
     async def async_set_native_value(self, value: float) -> None:
         """Update the value."""
@@ -126,13 +170,15 @@ class BticinoUpdateIntervalNumber(BticinoBaseNumber):
         self.coordinator.normal_interval = new_delta
         
         # 2. Apply immediately ONLY if not in Cool Down mode
-        # If we are banned (Cool Down), we must respect the 60min wait.
-        # The new interval will be applied automatically once the ban expires.
-        if self.coordinator.update_interval != self.coordinator.cool_down_interval:
+        # Use safer attribute check for 'in_cool_down' using getattr
+        in_cool_down = getattr(self.coordinator, "in_cool_down", False)
+        
+        if not in_cool_down:
             self.coordinator.update_interval = new_delta
 
         # 3. Save to Disk
-        await self._update_config_entry(CONF_UPDATE_INTERVAL, new_minutes)
+        # We DO NOT force refresh here if banned, as normal interval doesn't matter during a ban.
+        await self._update_config_entry(CONF_UPDATE_INTERVAL, new_minutes, force_refresh=False)
 
 
 class BticinoCoolDownNumber(BticinoBaseNumber):
@@ -166,13 +212,16 @@ class BticinoCoolDownNumber(BticinoBaseNumber):
         self.coordinator.cool_down_interval = new_delta
         
         # 2. Apply immediately ONLY if currently in Cool Down mode
-        # If we are currently waiting for a ban to expire, update the wait time.
-        # (Note: This resets the timer, effectively restarting the wait, which is safer)
-        if self.coordinator.update_interval.total_seconds() >= 600: # Heuristic: >10 min implies Cool Down
+        # Use specific boolean flag.
+        in_cool_down = getattr(self.coordinator, "in_cool_down", False)
+        
+        if in_cool_down:
              self.coordinator.update_interval = new_delta
 
-        # 3. Save to Disk
-        await self._update_config_entry(CONF_COOL_DOWN, new_minutes)
+        # 3. Save to Disk and FORCE REFRESH
+        # If the user changes this value, they likely want to shorten the wait 
+        # and try again immediately, so we bypass the cool down check for the refresh.
+        await self._update_config_entry(CONF_COOL_DOWN, new_minutes, force_refresh=True)
 
 
 class BticinoDebounceNumber(BticinoBaseNumber):
@@ -189,6 +238,9 @@ class BticinoDebounceNumber(BticinoBaseNumber):
     _attr_native_min_value = MIN_DEBOUNCE
     _attr_native_max_value = MAX_DEBOUNCE
     _attr_native_step = 0.1  # Allow decimal precision
+    
+    # Force display precision to 1 decimal place (e.g. "1.0")
+    _attr_native_precision = 1
 
     @property
     def native_value(self) -> float:
@@ -197,10 +249,12 @@ class BticinoDebounceNumber(BticinoBaseNumber):
 
     async def async_set_native_value(self, value: float) -> None:
         """Update the value."""
+        # Ensure proper rounding for float steps.
+        value = round(value, 1)
         _LOGGER.info("User changed Webhook Debounce to %s seconds", value)
 
         # 1. Update Coordinator Memory
         self.coordinator.debounce_time = value
         
         # 2. Save to Disk
-        await self._update_config_entry(CONF_DEBOUNCE, value)
+        await self._update_config_entry(CONF_DEBOUNCE, value, force_refresh=False)

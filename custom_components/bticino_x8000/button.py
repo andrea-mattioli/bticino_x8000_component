@@ -44,7 +44,7 @@ class BticinoForceTokenButton(CoordinatorEntity, ButtonEntity):
 
     _attr_has_entity_name = True
     _attr_name = "Force Token Refresh"
-    _attr_icon = "mdi:key-refresh"
+    _attr_icon = "mdi:cloud-refresh"
     _attr_entity_category = EntityCategory.CONFIG
     _attr_device_class = ButtonDeviceClass.RESTART  # 'RESTART' conveys the idea of resetting a connection
 

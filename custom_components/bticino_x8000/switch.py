@@ -11,6 +11,7 @@ from homeassistant.helpers.device_registry import DeviceEntryType
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .const import (
     DOMAIN,
@@ -47,7 +48,6 @@ class BticinoNotifyErrorsSwitch(CoordinatorEntity, SwitchEntity):
 
     _attr_has_entity_name = True
     _attr_name = "Enable Error Notifications"
-    _attr_icon = "mdi:bell-alert"
     _attr_entity_category = EntityCategory.CONFIG
     _attr_device_class = SwitchDeviceClass.SWITCH
 
@@ -56,6 +56,9 @@ class BticinoNotifyErrorsSwitch(CoordinatorEntity, SwitchEntity):
         super().__init__(coordinator)
         # Unique ID generated from Entry ID to be globally unique
         self._attr_unique_id = f"bticino_notify_errors_{coordinator.entry.entry_id}"
+        
+        # IMPROVEMENT: Track last change time locally to avoid updating it on every state read
+        self._last_change_time = None
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -81,6 +84,29 @@ class BticinoNotifyErrorsSwitch(CoordinatorEntity, SwitchEntity):
         """Return True if notifications are enabled, False otherwise."""
         return self.coordinator.notify_errors
 
+    @property
+    def icon(self) -> str:
+        """
+        IMPROVEMENT (UX): Dynamic icon based on state.
+        Provides immediate visual feedback: Alert bell when ON, crossed-out bell when OFF.
+        """
+        return "mdi:bell-alert" if self.is_on else "mdi:bell-off"
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """
+        IMPROVEMENT (Observability): Debug attributes.
+        Now uses the stored timestamp to correctly show when the setting was last MODIFIED,
+        not just when it was last read.
+        """
+        if not _LOGGER.isEnabledFor(logging.DEBUG):
+            return {}
+            
+        return {
+            "_last_change_time": self._last_change_time.isoformat() if self._last_change_time else None,
+            "_coordinator_notify_state": self.coordinator.notify_errors,
+        }
+
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Enable error notifications."""
         await self._update_notification_setting(True)
@@ -96,14 +122,19 @@ class BticinoNotifyErrorsSwitch(CoordinatorEntity, SwitchEntity):
         # 1. Update Coordinator Memory (Immediate effect)
         self.coordinator.notify_errors = enabled
         
-        # 2. Update Home Assistant State (UI Feedback)
+        # 2. Update local tracking timestamp (Logic Fix)
+        self._last_change_time = dt_util.utcnow()
+        
+        # 3. Update Home Assistant State (UI Feedback)
         self.async_write_ha_state()
 
-        # 3. Persist to Config Entry Options (Save to disk)
+        # 4. Persist to Config Entry Options (Save to disk)
         new_options = dict(self.coordinator.entry.options)
         new_options[CONF_NOTIFY_ERRORS] = enabled
         
-        await self.hass.config_entries.async_update_entry(
+        # CRITICAL FIX: 'async_update_entry' returns a boolean, not an awaitable coroutine.
+        # We removed the 'await' keyword to prevent the TypeError exception.
+        self.hass.config_entries.async_update_entry(
             self.coordinator.entry, 
             options=new_options
         )

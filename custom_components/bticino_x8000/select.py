@@ -69,6 +69,8 @@ class BticinoBaseSelect(CoordinatorEntity, SelectEntity):
         self._topology_id = topology_id
         self._thermostat_name = thermostat_name
         self._attr_has_entity_name = True
+        # Initialize current option to None
+        self._attr_current_option = None
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -83,7 +85,35 @@ class BticinoBaseSelect(CoordinatorEntity, SelectEntity):
     @property
     def _thermostat_data(self) -> dict[str, Any]:
         """Get data from coordinator."""
+        if self.coordinator.data is None:
+            return {}
         return self.coordinator.data.get(self._topology_id, {})
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """
+        IMPROVEMENT: Add raw data for debugging.
+        Consistent with other platforms.
+        """
+        if not _LOGGER.isEnabledFor(logging.DEBUG):
+            return {}
+            
+        return {
+            "_raw_mode": self._thermostat_data.get("mode"),
+            "_raw_programs": self._thermostat_data.get("programs"),
+            "_last_selected": self.current_option,
+            "_topology_id": self._topology_id,
+        }
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        self._update_state_from_coordinator()
+        self.async_write_ha_state()
+    
+    def _update_state_from_coordinator(self) -> None:
+        """To be implemented by subclasses."""
+        pass
 
 
 class BticinoBoostSelect(BticinoBaseSelect):
@@ -105,52 +135,85 @@ class BticinoBoostSelect(BticinoBaseSelect):
         super().__init__(coordinator, plant_id, topology_id, thermostat_name)
         self._attr_unique_id = f"{DOMAIN}_{topology_id}_boost"
         self._programs = programs
+        # Initial state calculation
+        self._update_state_from_coordinator()
 
     @property
-    def current_option(self) -> str | None:
-        """Return current boost status calculated from coordinator data."""
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """
+        IMPROVEMENT: Add boost specific attributes.
+        Exposes the end time of the boost if active, matching climate.py behavior.
+        """
+        # Get base attributes (debug info)
+        attrs = super().extra_state_attributes
+        
+        # Add Boost specific info if active
+        if self._attr_current_option != "off" and self._thermostat_data:
+            act_time = self._thermostat_data.get("activationTime")
+            if act_time and "/" in act_time:
+                # Format is usually start_time/end_time, we extract end_time
+                attrs["_boost_end_time"] = act_time.split("/")[-1]
+                
+        return attrs
+
+    def _update_state_from_coordinator(self) -> None:
+        """Calculate current boost status from coordinator data."""
         data = self._thermostat_data
+        if not data:
+            return
+
         mode = data.get("mode", "").lower()
 
         if mode == "boost" and "activationTime" in data:
             activation_time = data["activationTime"]
             
-            # Logic to guess original boost duration based on time remaining or start/end
-            if "/" in activation_time:
-                # Format: start/end
-                times = activation_time.split("/")
-                if len(times) == 2:
-                    start = dt_util.parse_datetime(times[0])
-                    end = dt_util.parse_datetime(times[1])
-                    if start and end:
-                        duration = int((end - start).total_seconds() / 60)
-                        if duration <= 45: return "30"
-                        if duration <= 75: return "60"
-                        return "90"
-            else:
-                # Only end time provided
-                end = dt_util.parse_datetime(activation_time)
-                if end:
-                    now = dt_util.now()
-                    end = dt_util.as_utc(end)
-                    remaining = int((end - now).total_seconds() / 60)
-                    # Heuristic estimation
-                    if remaining > 0:
-                        if remaining <= 30: return "30"
-                        if remaining <= 60: return "60"
-                        return "90"
+            # IMPROVEMENT: Robust Parsing with try/except
+            try:
+                # Logic to guess original boost duration based on time remaining or start/end
+                if "/" in activation_time:
+                    # Format: start/end
+                    times = activation_time.split("/")
+                    if len(times) == 2:
+                        start = dt_util.parse_datetime(times[0])
+                        end = dt_util.parse_datetime(times[1])
+                        if start and end:
+                            duration = int((end - start).total_seconds() / 60)
+                            if duration <= 45: self._attr_current_option = "30"
+                            elif duration <= 75: self._attr_current_option = "60"
+                            else: self._attr_current_option = "90"
+                            return
+                else:
+                    # Only end time provided
+                    end = dt_util.parse_datetime(activation_time)
+                    if end:
+                        now = dt_util.now()
+                        end = dt_util.as_utc(end)
+                        remaining = int((end - now).total_seconds() / 60)
+                        # Heuristic estimation
+                        if remaining > 0:
+                            if remaining <= 30: self._attr_current_option = "30"
+                            elif remaining <= 60: self._attr_current_option = "60"
+                            else: self._attr_current_option = "90"
+                            return
+            except Exception as e:
+                _LOGGER.warning("Error parsing boost time '%s': %s", activation_time, e)
         
-        return "off"
+        self._attr_current_option = "off"
 
     async def async_select_option(self, option: str) -> None:
         """Change the selected option."""
         if option == self.current_option:
             return
 
+        # IMPROVEMENT: Cooldown Protection
+        if getattr(self.coordinator, "in_cool_down", False):
+            _LOGGER.warning("Command ignored: Integration is in Cool Down (Rate Limit)")
+            return
+
+        payload = {}
+
         if option == "off":
             # Revert to automatic program
-            # We default to program 1 or whatever was active (difficult to know previous state)
-            # Safe bet: Automatic mode with first program
             program_number = 1
             if self._programs:
                 program_number = self._programs[0]["number"]
@@ -166,15 +229,12 @@ class BticinoBoostSelect(BticinoBaseSelect):
             _LOGGER.info("Turning off boost for %s", self._thermostat_name)
         else:
             # Activate Boost
-            # Calculate times locally to send to API
             now = dt_util.now()
             end_time = now + dt_util.timedelta(minutes=int(option))
             
-            # Format: YYYY-MM-DDTHH:MM:SS
             now_str = now.strftime("%Y-%m-%dT%H:%M:%S")
             end_str = end_time.strftime("%Y-%m-%dT%H:%M:%S")
             
-            # Determine setpoint (Max for heating, Min for cooling)
             function = self._thermostat_data.get("function", "heating")
             set_point = DEFAULT_MAX_TEMP
             if function == "cooling":
@@ -186,15 +246,28 @@ class BticinoBoostSelect(BticinoBaseSelect):
                 "activationTime": f"{now_str}/{end_str}",
                 "setPoint": {
                     "value": set_point,
-                    "unit": "C" # API expects simple unit string usually
+                    "unit": "C"
                 }
             }
             _LOGGER.info("Activating boost %s min for %s", option, self._thermostat_name)
 
-        # Send command via Coordinator API (Protected by Rate Limiter)
-        await self.coordinator.api.set_chronothermostat_status(
-            self._plant_id, self._topology_id, payload
-        )
+        # IMPROVEMENT: Optimistic Update
+        self._attr_current_option = option
+        self.async_write_ha_state()
+
+        try:
+            # Send command via Coordinator API
+            await self.coordinator.api.set_chronothermostat_status(
+                self._plant_id, self._topology_id, payload
+            )
+        except Exception as e:
+            _LOGGER.error("Failed to set boost option: %s", e)
+            # IMPROVEMENT: Revert on Failure
+            self._update_state_from_coordinator()
+            self.async_write_ha_state()
+        
+        # Update diagnostic sensors immediately
+        self.coordinator.notify_listeners_only()
 
 
 class BticinoProgramSelect(BticinoBaseSelect):
@@ -216,23 +289,27 @@ class BticinoProgramSelect(BticinoBaseSelect):
         self._attr_unique_id = f"{DOMAIN}_{topology_id}_program"
         self._programs = programs
         self._attr_options = [prog["name"] for prog in programs]
+        # Initial state calculation
+        self._update_state_from_coordinator()
 
-    @property
-    def current_option(self) -> str | None:
-        """Return current program."""
+    def _update_state_from_coordinator(self) -> None:
+        """Calculate current program from coordinator data."""
         data = self._thermostat_data
-        mode = data.get("mode", "").lower()
+        if not data:
+            return
 
-        # Only relevant if in automatic mode, though API reports program in array anyway
-        # if mode == "automatic":
         current_programs = data.get("programs", [])
         if current_programs:
-            prog_num = int(current_programs[0].get("number", 0))
-            for prog in self._programs:
-                if int(prog["number"]) == prog_num:
-                    return prog["name"]
+            try:
+                prog_num = int(current_programs[0].get("number", 0))
+                for prog in self._programs:
+                    if int(prog["number"]) == prog_num:
+                        self._attr_current_option = prog["name"]
+                        return
+            except (ValueError, TypeError):
+                pass
         
-        return None
+        self._attr_current_option = None
 
     async def async_select_option(self, option: str) -> None:
         """Change the selected program."""
@@ -247,6 +324,11 @@ class BticinoProgramSelect(BticinoBaseSelect):
             _LOGGER.error("Program %s not found", option)
             return
 
+        # IMPROVEMENT: Cooldown Protection
+        if getattr(self.coordinator, "in_cool_down", False):
+            _LOGGER.warning("Command ignored: Integration is in Cool Down (Rate Limit)")
+            return
+
         function = self._thermostat_data.get("function", "heating")
         
         payload = {
@@ -257,6 +339,19 @@ class BticinoProgramSelect(BticinoBaseSelect):
         
         _LOGGER.info("Setting program %s for %s", option, self._thermostat_name)
 
-        await self.coordinator.api.set_chronothermostat_status(
-            self._plant_id, self._topology_id, payload
-        )
+        # IMPROVEMENT: Optimistic Update
+        self._attr_current_option = option
+        self.async_write_ha_state()
+
+        try:
+            await self.coordinator.api.set_chronothermostat_status(
+                self._plant_id, self._topology_id, payload
+            )
+        except Exception as e:
+            _LOGGER.error("Failed to set program: %s", e)
+            # IMPROVEMENT: Revert on Failure
+            self._update_state_from_coordinator()
+            self.async_write_ha_state()
+
+        # Update diagnostic sensors immediately
+        self.coordinator.notify_listeners_only()
