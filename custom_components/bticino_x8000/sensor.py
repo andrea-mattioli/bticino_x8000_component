@@ -9,8 +9,14 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, UnitOfTemperature, UnitOfTime
+from homeassistant.const import (
+    PERCENTAGE,
+    UnitOfTemperature,
+    UnitOfTime,
+    EntityCategory,  # Added for diagnostic sensor
+)
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.device_registry import DeviceEntryType  # Added for Service Device
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -74,6 +80,12 @@ async def async_setup_entry(
                 coordinator, plant_id, topology_id, thermostat_name, programs
             )
         )
+    
+    # --- NEW: Singleton API Counter Sensor (Engineering Solution) ---
+    # This sensor is now independent of physical thermostats.
+    # It creates its own "Virtual Hub" device.
+    entities.append(BticinoApiCountSensor(coordinator))
+    # ---------------------------------------------------------------
 
     _LOGGER.debug("Total entities to add: %d", len(entities))
 
@@ -337,3 +349,58 @@ class BticinoBoostTimeRemainingSensor(BticinoBaseSensor):
                 pass
 
         return 0
+
+# --- SPECIAL DIAGNOSTIC SENSOR (Engineering Solution) ---
+
+class BticinoApiCountSensor(CoordinatorEntity, SensorEntity):
+    """
+    Diagnostic sensor for API usage.
+    
+    Architectural Note:
+    This sensor is NOT attached to a specific thermostat.
+    It creates a separate Virtual Device ("Bticino Cloud Service") 
+    representing the account/gateway connection.
+    """
+
+    _attr_icon = "mdi:api"
+    _attr_name = "API Call Count"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = "calls"
+    _attr_has_entity_name = True
+
+    def __init__(self, coordinator: BticinoCoordinator):
+        super().__init__(coordinator)
+        # Use the Config Entry ID to generate a truly unique ID for this instance
+        self._attr_unique_id = f"bticino_api_count_{coordinator.entry.entry_id}"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """
+        Create a Virtual Device for the Cloud Service.
+        This separates infrastructure metrics from climate devices.
+        """
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.coordinator.entry.entry_id)},
+            name="Bticino Cloud Service",
+            manufacturer="Legrand",
+            model="API Gateway",
+            entry_type=DeviceEntryType.SERVICE,
+        )
+
+    @property
+    def available(self) -> bool:
+        """
+        OVERRIDE: Always available.
+        
+        This sensor reads a local internal counter (coordinator.api.call_count).
+        It does NOT depend on a successful API response. 
+        It must remain visible even during Rate Limit bans (when coordinator fails)
+        so the user can diagnose the cause of the ban.
+        """
+        return True
+
+    @property
+    def native_value(self) -> int:
+        """Return the total number of API calls made since boot."""
+        return self.coordinator.api.call_count

@@ -3,25 +3,33 @@
 import logging
 from datetime import timedelta
 from typing import Any
+from time import monotonic  # Added for debounce logic
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 # Import for direct notifications to ensure visibility during boot
 from homeassistant.components import persistent_notification
+from homeassistant.util import dt as dt_util  # Added for diagnostic timestamps
 
 from .api import BticinoX8000Api, RateLimitError, AuthError, BticinoApiError
-from .const import DOMAIN
+from .const import (
+    DOMAIN,
+    # NEW: Imports for dynamic configuration keys and defaults
+    CONF_UPDATE_INTERVAL,
+    DEFAULT_UPDATE_INTERVAL,
+    CONF_COOL_DOWN,
+    DEFAULT_COOL_DOWN,
+    CONF_DEBOUNCE,
+    DEFAULT_DEBOUNCE,
+    CONF_NOTIFY_ERRORS,
+    DEFAULT_NOTIFY_ERRORS,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
-# Standard update interval (normal operation)
-# Set to 5 minutes to ensure data freshness while respecting standard API limits.
-NORMAL_INTERVAL = timedelta(minutes=5)
-
-# Extended interval when Rate Limit (429) is hit (Cool Down mode)
-# If we get banned, we wait 60 minutes to allow the server-side quota to reset completely.
-COOL_DOWN_INTERVAL = timedelta(minutes=60)
+# REMOVED: Static constants NORMAL_INTERVAL and COOL_DOWN_INTERVAL 
+# are now dynamic properties of the class (self.normal_interval, self.cool_down_interval).
 
 # Global ID for persistent notifications to avoid stacking multiple alerts.
 # If a new error occurs, the existing notification is updated/overwritten.
@@ -41,6 +49,28 @@ class BticinoCoordinator(DataUpdateCoordinator):
         self.entry = entry
         self.plant_map: dict[str, list[str]] = {}
         
+        # --- NEW: Load Dynamic Configuration (Architecture as Data) ---
+        
+        # 1. Update Interval (Normal polling)
+        # Read from Options (user settings), fallback to Default (15 min)
+        update_minutes = entry.options.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
+        self.normal_interval = timedelta(minutes=update_minutes)
+
+        # 2. Cool Down Interval (Wait time after Ban)
+        # Read from Options, fallback to Default (60 min)
+        cool_down_minutes = entry.options.get(CONF_COOL_DOWN, DEFAULT_COOL_DOWN)
+        self.cool_down_interval = timedelta(minutes=cool_down_minutes)
+
+        # 3. Webhook Debounce (Traffic Control)
+        # Read from Options, fallback to Default (1.0 sec)
+        self.debounce_time = entry.options.get(CONF_DEBOUNCE, DEFAULT_DEBOUNCE)
+
+        # 4. Error Notifications (User Experience)
+        # Read from Options, fallback to Default (True/ON)
+        self.notify_errors = entry.options.get(CONF_NOTIFY_ERRORS, DEFAULT_NOTIFY_ERRORS)
+
+        # ---------------------------------------------------------------
+        
         # Build a map of Plant IDs to Topology IDs (Thermostats) 
         # based on the user selection stored in the config entry.
         # This allows us to iterate specifically over the devices the user cares about.
@@ -58,8 +88,13 @@ class BticinoCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=NORMAL_INTERVAL,
+            # UPDATED: Use the dynamic variable, not the static constant
+            update_interval=self.normal_interval,
         )
+
+        # Debounce and Diagnostics initialization
+        self._last_webhook_mono = 0.0
+        self._last_webhook_time = None
 
     async def _async_update_data(self) -> dict[str, Any]:
         """
@@ -100,9 +135,11 @@ class BticinoCoordinator(DataUpdateCoordinator):
 
                     if status_code == 200:
                         # SUCCESS: Check if we need to recover from Cool Down mode
-                        if self.update_interval == COOL_DOWN_INTERVAL:
-                            _LOGGER.info("API request successful. Resetting update interval to 5 minutes.")
-                            self.update_interval = NORMAL_INTERVAL
+                        # UPDATED: Check against dynamic self.cool_down_interval
+                        if self.update_interval == self.cool_down_interval:
+                            _LOGGER.info("API request successful. Resetting update interval.")
+                            # UPDATED: Restore user-configured normal interval
+                            self.update_interval = self.normal_interval
                             # Dismiss the global persistent notification automatically if we recovered
                             persistent_notification.dismiss(self.hass, notification_id=NOTIFICATION_ID)
 
@@ -157,7 +194,7 @@ class BticinoCoordinator(DataUpdateCoordinator):
         This method is responsible for 'killing' the update loop efficiently and notifying the user.
         """
         _LOGGER.warning(
-            "Rate Limit detected on %s: %s. Switching to 60 min interval and aborting.", 
+            "Rate Limit detected on %s: %s. Switching to Cool Down interval and aborting.", 
             topology_id, message
         )
         
@@ -170,71 +207,155 @@ class BticinoCoordinator(DataUpdateCoordinator):
                 "plant_id": plant_id,
                 "topology_id": topology_id,
                 "message": message,
-                "cooldown_minutes": 60
+                "cooldown_minutes": self.cool_down_interval.total_seconds() / 60
             }
         )
 
         # 2. Create Persistent Notification (Directly visible in Dashboard)
-        # We use a GLOBAL ID (NOTIFICATION_ID) so we don't spam the user with multiple alerts.
-        # This ensures the user sees the alert even if automations haven't loaded yet during boot.
-        persistent_notification.async_create(
-            self.hass,
-            title="⛔ Bticino API Paused",
-            message=(
-                f"Rate Limit (429) detected.\n"
-                f"Integration paused for 60 minutes.\n\n"
-                f"Device: {topology_id}\n"
-                f"Error: {message}"
-            ),
-            notification_id=NOTIFICATION_ID
-        )
+        # UPDATED: Only show if enabled in configuration
+        if self.notify_errors:
+            # We use a GLOBAL ID (NOTIFICATION_ID) so we don't spam the user with multiple alerts.
+            # This ensures the user sees the alert even if automations haven't loaded yet during boot.
+            persistent_notification.async_create(
+                self.hass,
+                title="⛔ Bticino API Paused",
+                message=(
+                    f"Rate Limit (429) detected.\n"
+                    f"Integration paused for Cool Down period.\n\n"
+                    f"Device: {topology_id}\n"
+                    f"Error: {message}"
+                ),
+                notification_id=NOTIFICATION_ID
+            )
 
-        # 3. Set Cooldown Interval (60 minutes)
-        # The next update will not happen for an hour, letting the ban expire.
-        self.update_interval = COOL_DOWN_INTERVAL
+        # 3. Set Cooldown Interval (Dynamic)
+        # The next update will not happen for X minutes, letting the ban expire.
+        # UPDATED: Use the dynamic variable from configuration
+        self.update_interval = self.cool_down_interval
         
         # 4. RAISE EXCEPTION TO KILL THE LOOP IMMEDIATELY
         # Raising UpdateFailed tells Home Assistant that the update failed.
         # This stops the 'for' loop in _async_update_data and marks entities as Unavailable.
         raise UpdateFailed(f"Rate Limit Abort: {message}")
 
+    async def async_force_token_refresh(self) -> None:
+        """
+        Public method to force a token refresh manually (e.g. via Button entity).
+        This is useful if the token seems valid but the API is rejecting requests.
+        """
+        _LOGGER.info("Forcing manual token refresh requested by user.")
+        # We call the internal method in api.py
+        success = await self.api._handle_token_refresh()
+        if success:
+            _LOGGER.info("Manual token refresh successful.")
+            # Reset broken flag just in case
+            self.api.auth_broken = False
+        else:
+            _LOGGER.error("Manual token refresh failed.")
+
     def update_from_webhook(self, webhook_data: dict[str, Any]) -> None:
         """
-        Update internal data from webhook.
+        Update internal data from webhook payload defensively.
         
-        This allows the integration to react instantly to changes pushed by the server,
-        without waiting for the next polling interval.
+        Improvements:
+        1. Debounce: Prevents flooding if multiple webhooks arrive in < 1s.
+        2. Hybrid Lookup: Flattens plant_map for O(1) checks.
+        3. Diagnostics: Tracks last successful update time.
         """
-        if not self.data:
+        # 1. Debounce Check
+        # If webhooks arrive too fast (e.g., burst of slider movements), ignore them to save CPU.
+        now = monotonic()
+        # UPDATED: Use dynamic debounce time from configuration
+        if now - self._last_webhook_mono < self.debounce_time: 
+            _LOGGER.debug("Webhook ignored (debounce active)")
+            return
+        self._last_webhook_mono = now
+
+        # 2. Validation
+        if not isinstance(webhook_data, dict):
+            _LOGGER.warning("Webhook payload is not a dictionary: %s", type(webhook_data))
+            return
+
+        # 3. Optimization: Hybrid Lookup
+        # Flatten plant_map {plant_id: [ids]} into a simple set {id1, id2} for instant O(1) lookup.
+        # This avoids nested loops for every webhook received.
+        watched_topologies = set()
+        for ids in self.plant_map.values():
+            watched_topologies.update(ids)
+
+        # 4. Extraction
+        chronothermostats = self._extract_chronothermostats(webhook_data)
+        if not chronothermostats:
+             _LOGGER.debug("No valid chronothermostats list found in webhook")
+             return
+
+        # 5. Initialization
+        # Ensure internal data store is ready before the loop
+        if self.data is None:
             self.data = {}
+
+        updated_count = 0
+        
+        # 6. Processing Loop
+        for chrono in chronothermostats:
+            if not isinstance(chrono, dict):
+                continue
+
+            # Refactored: Use helper to extract ID cleanly
+            topology_id = self._get_topology_id(chrono)
+
+            if not topology_id:
+                _LOGGER.debug("Could not extract valid topology_id from item")
+                continue
+
+            # Filter: Only update if this device is in our configuration
+            if topology_id not in watched_topologies:
+                _LOGGER.debug("Ignoring webhook for unmonitored topology_id: %s", topology_id)
+                continue
+
+            # Update Data
+            self.data[topology_id] = chrono
+            updated_count += 1
+            _LOGGER.debug("Updated via webhook -> %s", topology_id)
+
+        # 7. Finalize
+        if updated_count > 0:
+            # Update diagnostic timestamp
+            self._last_webhook_time = dt_util.utcnow()
+            _LOGGER.info("Webhook updated %d entities", updated_count)
+            # Notify listeners
+            self.async_set_updated_data(self.data)
+        else:
+            _LOGGER.debug("Webhook received but no relevant updates applied")
+
+    def _get_topology_id(self, chrono: dict) -> str | None:
+        """Helper to extract topology_id from a chrono object safely."""
+        # Standard path: sender -> plant -> module -> id
+        path = chrono.get("sender", {}).get("plant", {}).get("module", {}).get("id")
+        if path and isinstance(path, str):
+            return path
             
-        try:
-            chronothermostats = webhook_data.get("data", [])
-            updated_count = 0
-            
-            for wrapper in chronothermostats:
-                # Flexible handling of webhook structure (sometimes nested differently)
-                inner_data = wrapper.get("data", {})
-                inner_chronos = []
-                
-                if "chronothermostats" in inner_data:
-                    inner_chronos = inner_data["chronothermostats"]
-                elif "chronothermostats" in wrapper:
-                    inner_chronos = wrapper["chronothermostats"]
-                
-                for chrono in inner_chronos:
-                    plant_data = chrono.get("sender", {}).get("plant", {})
-                    topology_id = plant_data.get("module", {}).get("id")
-                    
-                    if topology_id:
-                        _LOGGER.debug("Webhook received for topology ID: %s", topology_id)
-                        self.data[topology_id] = chrono
-                        updated_count += 1
-            
-            if updated_count > 0:
-                _LOGGER.info("Updated %s entities from Webhook data", updated_count)
-                # Notify listeners (sensors/climate) that data has changed
-                self.async_set_updated_data(self.data)
-                
-        except Exception as e:
-            _LOGGER.error("Error parsing webhook data: %s", e)
+        # Legacy/Fallback path: receiver -> oid
+        oid = chrono.get("receiver", {}).get("oid")
+        return oid if isinstance(oid, str) else None
+
+    def _extract_chronothermostats(self, payload: Any) -> list[dict]:
+        """
+        Defensive helper to extract the chronothermostats list.
+        It handles different nesting levels often seen in Legrand APIs.
+        """
+        if not isinstance(payload, dict):
+            return []
+
+        # Scenario A: Standard structure { "data": { "chronothermostats": [...] } }
+        data = payload.get("data", {})
+        if "chronothermostats" in data:
+            ch = data["chronothermostats"]
+            return ch if isinstance(ch, list) else [ch] if isinstance(ch, dict) else []
+
+        # Scenario B: Direct structure { "chronothermostats": [...] }
+        if "chronothermostats" in payload:
+            ch = payload["chronothermostats"]
+            return ch if isinstance(ch, list) else [ch] if isinstance(ch, dict) else []
+
+        return []

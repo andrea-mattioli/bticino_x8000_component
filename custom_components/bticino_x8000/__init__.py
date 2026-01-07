@@ -5,7 +5,7 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-# Importiamo l'eccezione corretta che blocca il loop di riavvio
+# Import the correct exception that blocks the restart loop
 from homeassistant.exceptions import ConfigEntryNotReady
 
 from .api import BticinoX8000Api
@@ -15,7 +15,15 @@ from .webhook import BticinoX8000WebhookHandler
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.CLIMATE, Platform.SENSOR, Platform.SELECT]
+# UPDATED: Added NUMBER, SWITCH, and BUTTON to the list of platforms to load
+PLATFORMS: list[Platform] = [
+    Platform.CLIMATE, 
+    Platform.SENSOR, 
+    Platform.SELECT, 
+    Platform.NUMBER, 
+    Platform.SWITCH, 
+    Platform.BUTTON
+]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

@@ -53,6 +53,9 @@ class BticinoX8000Api:
         self._api_semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
         self.auth_broken = False
         
+        # Diagnostic: Internal counter for total API calls made since boot
+        self.call_count = 0
+        
         # Use Home Assistant's shared session
         self._session = async_get_clientsession(hass)
 
@@ -88,7 +91,12 @@ class BticinoX8000Api:
                     if payload:
                         request_args["json"] = payload
 
-                    _LOGGER.debug("API Attempt %s/%s: %s %s", attempts, max_attempts, method, url)
+                    # INCREMENT COUNTER: This counts every actual HTTP attempt
+                    self.call_count += 1
+                    _LOGGER.debug(
+                        "API Call #%s | Attempt %s/%s: %s %s", 
+                        self.call_count, attempts, max_attempts, method, url
+                    )
 
                     async with self._session.request(method, url, **request_args) as response:
                         status_code = response.status
@@ -123,24 +131,27 @@ class BticinoX8000Api:
                                 _LOGGER.error("401 Loop detected. Stop retrying.")
                                 raise AuthError("Unauthorized - Retry limit reached")
                         
-                        # CASE 3: RATE LIMIT (429) or SERVER ERROR (5xx)
-                        # Implement Exponential Backoff
-                        if status_code == 429 or status_code >= 500:
+                        # CASE 3: RATE LIMIT (429) - FATAL IMMEDIATE STOP
+                        # Logic changed: Do NOT retry on 429. This prevents extending the ban.
+                        if status_code == 429:
+                            _LOGGER.error("429 Rate Limit Detected on attempt %s. ABORTING RETRIES.", attempts)
+                            raise RateLimitError(f"Persistent Rate Limit (429) detected")
+
+                        # CASE 4: SERVER ERROR (5xx)
+                        # We still retry for 500+ errors as they might be temporary glitches.
+                        if status_code >= 500:
                             if attempts < max_attempts:
                                 _LOGGER.warning(
-                                    "Error %s detected. Sleeping for %s seconds before retry...", 
+                                    "Server Error %s detected. Sleeping for %s seconds before retry...", 
                                     status_code, current_delay
                                 )
                                 await asyncio.sleep(current_delay)
                                 current_delay *= 2  # Double the delay for next attempt
                                 continue
                             else:
-                                if status_code == 429:
-                                    raise RateLimitError(f"Persistent Rate Limit (429) after {max_attempts} attempts")
-                                else:
-                                    raise BticinoApiError(f"Persistent Server Error {status_code} after {max_attempts} attempts")
+                                raise BticinoApiError(f"Persistent Server Error {status_code} after {max_attempts} attempts")
 
-                        # CASE 4: CLIENT ERRORS (4xx except 401/429/409)
+                        # CASE 5: CLIENT ERRORS (4xx except 401/429/409)
                         _LOGGER.error("HTTP Client Error %s: %s", status_code, content)
                         raise BticinoApiError(f"HTTP Client Error {status_code}: {content}")
 
