@@ -9,14 +9,16 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory  # Added for diagnostic sensor
 from homeassistant.const import (
     PERCENTAGE,
     UnitOfTemperature,
     UnitOfTime,
-    EntityCategory,  # Added for diagnostic sensor
 )
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.device_registry import DeviceEntryType  # Added for Service Device
+from homeassistant.helpers.device_registry import (  # Added for Service Device
+    DeviceEntryType,
+)
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -43,9 +45,11 @@ async def async_setup_entry(
     # This ensures entities are created even if the coordinator is initially empty.
     data = dict(config_entry.data)
     entities = []
-    
+
     selected_thermostats = data.get("selected_thermostats", [])
-    _LOGGER.debug("Found %d selected thermostats in configuration", len(selected_thermostats))
+    _LOGGER.debug(
+        "Found %d selected thermostats in configuration", len(selected_thermostats)
+    )
 
     for plant_data in selected_thermostats:
         plant_id = list(plant_data.keys())[0]
@@ -54,8 +58,10 @@ async def async_setup_entry(
         topology_id = thermo_data.get("id")
         thermostat_name = thermo_data.get("name")
         programs = thermo_data.get("programs", [])
-        
-        _LOGGER.debug("Creating sensors for thermostat: %s (ID: %s)", thermostat_name, topology_id)
+
+        _LOGGER.debug(
+            "Creating sensors for thermostat: %s (ID: %s)", thermostat_name, topology_id
+        )
 
         # Create standard sensors
         sensors_classes = [
@@ -69,9 +75,7 @@ async def async_setup_entry(
 
         for sensor_class in sensors_classes:
             entities.append(
-                sensor_class(
-                    coordinator, plant_id, topology_id, thermostat_name
-                )
+                sensor_class(coordinator, plant_id, topology_id, thermostat_name)
             )
 
         # Create Program sensor (needs extra argument for program list)
@@ -80,7 +84,7 @@ async def async_setup_entry(
                 coordinator, plant_id, topology_id, thermostat_name, programs
             )
         )
-    
+
     # --- NEW: Singleton API Counter Sensor (Engineering Solution) ---
     # This sensor is now independent of physical thermostats.
     # It creates its own "Virtual Hub" device.
@@ -350,15 +354,17 @@ class BticinoBoostTimeRemainingSensor(BticinoBaseSensor):
 
         return 0
 
+
 # --- SPECIAL DIAGNOSTIC SENSOR (Engineering Solution) ---
+
 
 class BticinoApiCountSensor(CoordinatorEntity, SensorEntity):
     """
     Diagnostic sensor for API usage.
-    
+
     Architectural Note:
     This sensor is NOT attached to a specific thermostat.
-    It creates a separate Virtual Device ("Bticino Cloud Service") 
+    It creates a separate Virtual Device ("Bticino Cloud Service")
     representing the account/gateway connection.
     """
 
@@ -392,9 +398,9 @@ class BticinoApiCountSensor(CoordinatorEntity, SensorEntity):
     def available(self) -> bool:
         """
         OVERRIDE: Always available.
-        
+
         This sensor reads a local internal counter (coordinator.api.call_count).
-        It does NOT depend on a successful API response. 
+        It does NOT depend on a successful API response.
         It must remain visible even during Rate Limit bans (when coordinator fails)
         so the user can diagnose the cause of the ban.
         """

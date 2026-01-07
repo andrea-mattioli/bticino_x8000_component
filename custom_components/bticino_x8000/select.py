@@ -11,7 +11,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, DEFAULT_MAX_TEMP, DEFAULT_MIN_TEMP
+from .const import DEFAULT_MAX_TEMP, DEFAULT_MIN_TEMP, DOMAIN
 from .coordinator import BticinoCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -114,7 +114,7 @@ class BticinoBoostSelect(BticinoBaseSelect):
 
         if mode == "boost" and "activationTime" in data:
             activation_time = data["activationTime"]
-            
+
             # Logic to guess original boost duration based on time remaining or start/end
             if "/" in activation_time:
                 # Format: start/end
@@ -124,8 +124,10 @@ class BticinoBoostSelect(BticinoBaseSelect):
                     end = dt_util.parse_datetime(times[1])
                     if start and end:
                         duration = int((end - start).total_seconds() / 60)
-                        if duration <= 45: return "30"
-                        if duration <= 75: return "60"
+                        if duration <= 45:
+                            return "30"
+                        if duration <= 75:
+                            return "60"
                         return "90"
             else:
                 # Only end time provided
@@ -136,10 +138,12 @@ class BticinoBoostSelect(BticinoBaseSelect):
                     remaining = int((end - now).total_seconds() / 60)
                     # Heuristic estimation
                     if remaining > 0:
-                        if remaining <= 30: return "30"
-                        if remaining <= 60: return "60"
+                        if remaining <= 30:
+                            return "30"
+                        if remaining <= 60:
+                            return "60"
                         return "90"
-        
+
         return "off"
 
     async def async_select_option(self, option: str) -> None:
@@ -157,11 +161,11 @@ class BticinoBoostSelect(BticinoBaseSelect):
 
             # Try to keep current function (heating/cooling)
             function = self._thermostat_data.get("function", "heating")
-            
+
             payload = {
                 "function": function,
                 "mode": "automatic",
-                "programs": [{"number": program_number}]
+                "programs": [{"number": program_number}],
             }
             _LOGGER.info("Turning off boost for %s", self._thermostat_name)
         else:
@@ -169,11 +173,11 @@ class BticinoBoostSelect(BticinoBaseSelect):
             # Calculate times locally to send to API
             now = dt_util.now()
             end_time = now + dt_util.timedelta(minutes=int(option))
-            
+
             # Format: YYYY-MM-DDTHH:MM:SS
             now_str = now.strftime("%Y-%m-%dT%H:%M:%S")
             end_str = end_time.strftime("%Y-%m-%dT%H:%M:%S")
-            
+
             # Determine setpoint (Max for heating, Min for cooling)
             function = self._thermostat_data.get("function", "heating")
             set_point = DEFAULT_MAX_TEMP
@@ -186,10 +190,12 @@ class BticinoBoostSelect(BticinoBaseSelect):
                 "activationTime": f"{now_str}/{end_str}",
                 "setPoint": {
                     "value": set_point,
-                    "unit": "C" # API expects simple unit string usually
-                }
+                    "unit": "C",  # API expects simple unit string usually
+                },
             }
-            _LOGGER.info("Activating boost %s min for %s", option, self._thermostat_name)
+            _LOGGER.info(
+                "Activating boost %s min for %s", option, self._thermostat_name
+            )
 
         # Send command via Coordinator API (Protected by Rate Limiter)
         await self.coordinator.api.set_chronothermostat_status(
@@ -231,7 +237,7 @@ class BticinoProgramSelect(BticinoBaseSelect):
             for prog in self._programs:
                 if int(prog["number"]) == prog_num:
                     return prog["name"]
-        
+
         return None
 
     async def async_select_option(self, option: str) -> None:
@@ -242,19 +248,19 @@ class BticinoProgramSelect(BticinoBaseSelect):
             if prog["name"] == option:
                 program_number = prog["number"]
                 break
-        
+
         if program_number is None:
             _LOGGER.error("Program %s not found", option)
             return
 
         function = self._thermostat_data.get("function", "heating")
-        
+
         payload = {
             "function": function,
             "mode": "automatic",
-            "programs": [{"number": program_number}]
+            "programs": [{"number": program_number}],
         }
-        
+
         _LOGGER.info("Setting program %s for %s", option, self._thermostat_name)
 
         await self.coordinator.api.set_chronothermostat_status(
