@@ -11,7 +11,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, DEFAULT_MAX_TEMP, DEFAULT_MIN_TEMP
+from .const import DEFAULT_MAX_TEMP, DEFAULT_MIN_TEMP, DOMAIN
 from .coordinator import BticinoCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -97,7 +97,7 @@ class BticinoBaseSelect(CoordinatorEntity, SelectEntity):
         """
         if not _LOGGER.isEnabledFor(logging.DEBUG):
             return {}
-            
+
         return {
             "_raw_mode": self._thermostat_data.get("mode"),
             "_raw_programs": self._thermostat_data.get("programs"),
@@ -110,7 +110,7 @@ class BticinoBaseSelect(CoordinatorEntity, SelectEntity):
         """Handle updated data from the coordinator."""
         self._update_state_from_coordinator()
         self.async_write_ha_state()
-    
+
     def _update_state_from_coordinator(self) -> None:
         """To be implemented by subclasses."""
         pass
@@ -146,14 +146,14 @@ class BticinoBoostSelect(BticinoBaseSelect):
         """
         # Get base attributes (debug info)
         attrs = super().extra_state_attributes
-        
+
         # Add Boost specific info if active
         if self._attr_current_option != "off" and self._thermostat_data:
             act_time = self._thermostat_data.get("activationTime")
             if act_time and "/" in act_time:
                 # Format is usually start_time/end_time, we extract end_time
                 attrs["_boost_end_time"] = act_time.split("/")[-1]
-                
+
         return attrs
 
     def _update_state_from_coordinator(self) -> None:
@@ -166,7 +166,7 @@ class BticinoBoostSelect(BticinoBaseSelect):
 
         if mode == "boost" and "activationTime" in data:
             activation_time = data["activationTime"]
-            
+
             # IMPROVEMENT: Robust Parsing with try/except
             try:
                 # Logic to guess original boost duration based on time remaining or start/end
@@ -178,9 +178,12 @@ class BticinoBoostSelect(BticinoBaseSelect):
                         end = dt_util.parse_datetime(times[1])
                         if start and end:
                             duration = int((end - start).total_seconds() / 60)
-                            if duration <= 45: self._attr_current_option = "30"
-                            elif duration <= 75: self._attr_current_option = "60"
-                            else: self._attr_current_option = "90"
+                            if duration <= 45:
+                                self._attr_current_option = "30"
+                            elif duration <= 75:
+                                self._attr_current_option = "60"
+                            else:
+                                self._attr_current_option = "90"
                             return
                 else:
                     # Only end time provided
@@ -191,13 +194,16 @@ class BticinoBoostSelect(BticinoBaseSelect):
                         remaining = int((end - now).total_seconds() / 60)
                         # Heuristic estimation
                         if remaining > 0:
-                            if remaining <= 30: self._attr_current_option = "30"
-                            elif remaining <= 60: self._attr_current_option = "60"
-                            else: self._attr_current_option = "90"
+                            if remaining <= 30:
+                                self._attr_current_option = "30"
+                            elif remaining <= 60:
+                                self._attr_current_option = "60"
+                            else:
+                                self._attr_current_option = "90"
                             return
             except Exception as e:
                 _LOGGER.warning("Error parsing boost time '%s': %s", activation_time, e)
-        
+
         self._attr_current_option = "off"
 
     async def async_select_option(self, option: str) -> None:
@@ -220,21 +226,21 @@ class BticinoBoostSelect(BticinoBaseSelect):
 
             # Try to keep current function (heating/cooling)
             function = self._thermostat_data.get("function", "heating")
-            
+
             payload = {
                 "function": function,
                 "mode": "automatic",
-                "programs": [{"number": program_number}]
+                "programs": [{"number": program_number}],
             }
             _LOGGER.info("Turning off boost for %s", self._thermostat_name)
         else:
             # Activate Boost
             now = dt_util.now()
             end_time = now + dt_util.timedelta(minutes=int(option))
-            
+
             now_str = now.strftime("%Y-%m-%dT%H:%M:%S")
             end_str = end_time.strftime("%Y-%m-%dT%H:%M:%S")
-            
+
             function = self._thermostat_data.get("function", "heating")
             set_point = DEFAULT_MAX_TEMP
             if function == "cooling":
@@ -244,12 +250,11 @@ class BticinoBoostSelect(BticinoBaseSelect):
                 "function": function,
                 "mode": "boost",
                 "activationTime": f"{now_str}/{end_str}",
-                "setPoint": {
-                    "value": set_point,
-                    "unit": "C"
-                }
+                "setPoint": {"value": set_point, "unit": "C"},
             }
-            _LOGGER.info("Activating boost %s min for %s", option, self._thermostat_name)
+            _LOGGER.info(
+                "Activating boost %s min for %s", option, self._thermostat_name
+            )
 
         # IMPROVEMENT: Optimistic Update
         self._attr_current_option = option
@@ -265,7 +270,7 @@ class BticinoBoostSelect(BticinoBaseSelect):
             # IMPROVEMENT: Revert on Failure
             self._update_state_from_coordinator()
             self.async_write_ha_state()
-        
+
         # Update diagnostic sensors immediately
         self.coordinator.notify_listeners_only()
 
@@ -308,7 +313,7 @@ class BticinoProgramSelect(BticinoBaseSelect):
                         return
             except (ValueError, TypeError):
                 pass
-        
+
         self._attr_current_option = None
 
     async def async_select_option(self, option: str) -> None:
@@ -319,7 +324,7 @@ class BticinoProgramSelect(BticinoBaseSelect):
             if prog["name"] == option:
                 program_number = prog["number"]
                 break
-        
+
         if program_number is None:
             _LOGGER.error("Program %s not found", option)
             return
@@ -330,13 +335,13 @@ class BticinoProgramSelect(BticinoBaseSelect):
             return
 
         function = self._thermostat_data.get("function", "heating")
-        
+
         payload = {
             "function": function,
             "mode": "automatic",
-            "programs": [{"number": program_number}]
+            "programs": [{"number": program_number}],
         }
-        
+
         _LOGGER.info("Setting program %s for %s", option, self._thermostat_name)
 
         # IMPROVEMENT: Optimistic Update

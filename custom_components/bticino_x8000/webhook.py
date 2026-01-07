@@ -3,14 +3,16 @@
 import logging
 import secrets  # Added for request tracing
 
+# Type checking import only to avoid circular dependency at runtime
+from typing import TYPE_CHECKING
+
 from aiohttp.web import Request, Response
 from homeassistant.components.webhook import async_register as webhook_register
 from homeassistant.components.webhook import async_unregister as webhook_unregister
 from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
-# Type checking import only to avoid circular dependency at runtime
-from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     from .coordinator import BticinoCoordinator
 
@@ -47,13 +49,19 @@ class BticinoX8000WebhookHandler:
         # IMPROVEMENT: Strict Validation
         # Ensure payload is a dictionary to prevent AttributeErrors later
         if not isinstance(data, dict):
-            _LOGGER.warning("[%s] Webhook payload is not a dictionary: %s", request_id, type(data))
+            _LOGGER.warning(
+                "[%s] Webhook payload is not a dictionary: %s", request_id, type(data)
+            )
             # Return 200 OK to acknowledge receipt and prevent retries from the server
             return Response(text="OK", status=200)
 
         # IMPROVEMENT: Basic Content Filter
         # Check for expected keys to filter out noise/garbage
-        if "chronothermostats" not in data and "data" not in data and "plant" not in data:
+        if (
+            "chronothermostats" not in data
+            and "data" not in data
+            and "plant" not in data
+        ):
             _LOGGER.debug("[%s] Webhook ignored: Unrecognized structure", request_id)
             return Response(text="OK", status=200)
 
@@ -63,7 +71,7 @@ class BticinoX8000WebhookHandler:
         # Instead of using dispatcher, we push data directly to the coordinator.
         # We iterate over all loaded entries for this domain because the webhook
         # does not carry the config_entry_id, but the coordinator filters by topology_id.
-        
+
         if DOMAIN in hass.data:
             found_coordinator = False
             for entry_id, coordinator in hass.data[DOMAIN].items():
@@ -71,11 +79,17 @@ class BticinoX8000WebhookHandler:
                 if hasattr(coordinator, "update_from_webhook"):
                     coordinator.update_from_webhook(data)
                     found_coordinator = True
-            
+
             if not found_coordinator:
-                _LOGGER.warning("[%s] Received webhook but no active coordinator found to handle it.", request_id)
+                _LOGGER.warning(
+                    "[%s] Received webhook but no active coordinator found to handle it.",
+                    request_id,
+                )
         else:
-            _LOGGER.warning("[%s] Received webhook but Bticino integration is not loaded.", request_id)
+            _LOGGER.warning(
+                "[%s] Received webhook but Bticino integration is not loaded.",
+                request_id,
+            )
 
         return Response(text="OK", status=200)
 

@@ -1,11 +1,11 @@
 """Authentication utilities for the Bticino X8000 custom component."""
 
+import asyncio  # Added for sleep/backoff
 import logging
 import time
-import asyncio  # Added for sleep/backoff
-import aiohttp  # Added for ClientTimeout and ClientError
 from typing import Any
 
+import aiohttp  # Added for ClientTimeout and ClientError
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import dt as dt_util
@@ -35,13 +35,17 @@ async def exchange_code_for_tokens(
 
     # FIX: Uso della sessione condivisa (Best Practice HA)
     session = async_get_clientsession(hass)
-    
+
     # IMPROVEMENT: Retry Logic with Backoff
     for attempt in range(MAX_RETRIES + 1):
         try:
-            async with session.post(token_url, data=payload, timeout=AUTH_TIMEOUT) as response:
+            async with session.post(
+                token_url, data=payload, timeout=AUTH_TIMEOUT
+            ) as response:
                 status_code = response.status
-                _LOGGER.debug("exchange_code_for_tokens - Response status: %s", status_code)
+                _LOGGER.debug(
+                    "exchange_code_for_tokens - Response status: %s", status_code
+                )
 
                 if status_code != 200:
                     content = await response.text()
@@ -54,7 +58,7 @@ async def exchange_code_for_tokens(
                     # Don't retry on 4xx errors (client errors), only on network issues
                     if 400 <= status_code < 500:
                         raise ValueError(f"Auth Client Error: {status_code}")
-                        
+
                     raise ValueError(
                         f"Failed to exchange code for tokens. Status: {status_code}"
                     )
@@ -71,15 +75,25 @@ async def exchange_code_for_tokens(
                         content,
                         exc_info=True,
                     )
-                    raise ValueError(f"Invalid JSON response from auth server: {e}") from e
+                    raise ValueError(
+                        f"Invalid JSON response from auth server: {e}"
+                    ) from e
 
-        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+        except (aiohttp.ClientError, TimeoutError) as e:
             if attempt == MAX_RETRIES:
-                _LOGGER.error("exchange_code_for_tokens - Network error after %d retries: %s", MAX_RETRIES, e)
+                _LOGGER.error(
+                    "exchange_code_for_tokens - Network error after %d retries: %s",
+                    MAX_RETRIES,
+                    e,
+                )
                 raise
-            
-            wait_time = 2 ** attempt
-            _LOGGER.warning("exchange_code_for_tokens - Network error: %s. Retrying in %ss...", e, wait_time)
+
+            wait_time = 2**attempt
+            _LOGGER.warning(
+                "exchange_code_for_tokens - Network error: %s. Retrying in %ss...",
+                e,
+                wait_time,
+            )
             await asyncio.sleep(wait_time)
         except Exception as e:
             _LOGGER.error("exchange_code_for_tokens - Unexpected error: %s", e)
@@ -88,15 +102,18 @@ async def exchange_code_for_tokens(
     # FIX CODE REVIEW: Controllo simmetrico esistenza access_token
     if not token_data.get("access_token"):
         _LOGGER.error(
-            "exchange_code_for_tokens - Missing access_token in response: %s", token_data
+            "exchange_code_for_tokens - Missing access_token in response: %s",
+            token_data,
         )
         raise ValueError("Missing access_token in token exchange response")
 
     access_token = "Bearer " + token_data.get("access_token")
     refresh_token = token_data.get("refresh_token")
     expires_in = token_data.get("expires_in")
-    
-    expires_ts = int(time.time()) + int(expires_in) if expires_in else int(time.time()) + 3600
+
+    expires_ts = (
+        int(time.time()) + int(expires_in) if expires_in else int(time.time()) + 3600
+    )
     access_token_expires_on = dt_util.utc_from_timestamp(expires_ts)
 
     return access_token, refresh_token, access_token_expires_on
@@ -122,7 +139,9 @@ async def refresh_access_token(
     # IMPROVEMENT: Retry Logic with Backoff
     for attempt in range(MAX_RETRIES + 1):
         try:
-            async with session.post(token_url, data=payload, timeout=AUTH_TIMEOUT) as response:
+            async with session.post(
+                token_url, data=payload, timeout=AUTH_TIMEOUT
+            ) as response:
                 status_code = response.status
                 _LOGGER.debug("refresh_access_token - Response status: %s", status_code)
 
@@ -136,7 +155,7 @@ async def refresh_access_token(
                     # Don't retry 4xx errors (e.g. invalid refresh token)
                     if 400 <= status_code < 500:
                         raise ValueError(f"Refresh Token Invalid: {status_code}")
-                        
+
                     raise ValueError(f"Failed to refresh token. Status: {status_code}")
 
                 try:
@@ -151,15 +170,25 @@ async def refresh_access_token(
                         content,
                         exc_info=True,
                     )
-                    raise ValueError(f"Invalid JSON response from auth server: {e}") from e
+                    raise ValueError(
+                        f"Invalid JSON response from auth server: {e}"
+                    ) from e
 
-        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+        except (aiohttp.ClientError, TimeoutError) as e:
             if attempt == MAX_RETRIES:
-                _LOGGER.error("refresh_access_token - Network error after %d retries: %s", MAX_RETRIES, e)
+                _LOGGER.error(
+                    "refresh_access_token - Network error after %d retries: %s",
+                    MAX_RETRIES,
+                    e,
+                )
                 raise
-            
-            wait_time = 2 ** attempt
-            _LOGGER.warning("refresh_access_token - Network error: %s. Retrying in %ss...", e, wait_time)
+
+            wait_time = 2**attempt
+            _LOGGER.warning(
+                "refresh_access_token - Network error: %s. Retrying in %ss...",
+                e,
+                wait_time,
+            )
             await asyncio.sleep(wait_time)
         except Exception as e:
             _LOGGER.error("refresh_access_token - Unexpected error: %s", e)
@@ -172,7 +201,7 @@ async def refresh_access_token(
         raise ValueError("Missing access_token in refresh response")
 
     access_token = "Bearer " + token_data.get("access_token")
-    
+
     # IMPROVEMENT: Refresh Token Fallback
     # Some OAuth2 servers do not return a new refresh token. In that case, we must keep the old one.
     new_refresh_token = token_data.get("refresh_token")

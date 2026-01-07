@@ -4,8 +4,8 @@ import logging
 from datetime import timedelta
 
 from homeassistant.components.number import (
-    NumberEntity,
     NumberDeviceClass,
+    NumberEntity,
     NumberMode,
 )
 from homeassistant.config_entries import ConfigEntry
@@ -18,20 +18,21 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    DOMAIN,
-    CONF_UPDATE_INTERVAL,
     CONF_COOL_DOWN,
     CONF_DEBOUNCE,
-    MIN_UPDATE_INTERVAL,
+    CONF_UPDATE_INTERVAL,
+    DOMAIN,
+    MAX_COOL_DOWN,
+    MAX_DEBOUNCE,
     MAX_UPDATE_INTERVAL,
     MIN_COOL_DOWN,
-    MAX_COOL_DOWN,
     MIN_DEBOUNCE,
-    MAX_DEBOUNCE,
+    MIN_UPDATE_INTERVAL,
 )
 from .coordinator import BticinoCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -47,7 +48,7 @@ async def async_setup_entry(
         BticinoCoolDownNumber(coordinator),
         BticinoDebounceNumber(coordinator),
     ]
-    
+
     async_add_entities(entities)
 
 
@@ -56,7 +57,9 @@ class BticinoBaseNumber(CoordinatorEntity, NumberEntity):
 
     _attr_has_entity_name = True
     _attr_entity_category = EntityCategory.CONFIG
-    _attr_mode = NumberMode.BOX  # BOX is better for precise numerical input than a slider
+    _attr_mode = (
+        NumberMode.BOX
+    )  # BOX is better for precise numerical input than a slider
 
     def __init__(self, coordinator: BticinoCoordinator) -> None:
         """Initialize the number entity."""
@@ -93,17 +96,20 @@ class BticinoBaseNumber(CoordinatorEntity, NumberEntity):
         """
         if not _LOGGER.isEnabledFor(logging.DEBUG):
             return {}
-        
+
         return {
             "_last_set_value_native": self.native_value,
             "_last_debug_timestamp": dt_util.utcnow().isoformat(),
-            "_active_interval_minutes": self.coordinator.update_interval.total_seconds() / 60,
+            "_active_interval_minutes": self.coordinator.update_interval.total_seconds()
+            / 60,
         }
 
-    async def _update_config_entry(self, key: str, value: float, force_refresh: bool = False) -> None:
+    async def _update_config_entry(
+        self, key: str, value: float, force_refresh: bool = False
+    ) -> None:
         """
         Helper to save the new value to the Config Entry options (disk).
-        
+
         Args:
             key: Config key to update.
             value: New value.
@@ -111,13 +117,12 @@ class BticinoBaseNumber(CoordinatorEntity, NumberEntity):
         """
         new_options = dict(self.coordinator.entry.options)
         new_options[key] = value
-        
+
         # self.hass.config_entries.async_update_entry returns a bool, not a coroutine.
         self.hass.config_entries.async_update_entry(
-            self.coordinator.entry, 
-            options=new_options
+            self.coordinator.entry, options=new_options
         )
-        
+
         self.async_write_ha_state()
 
         # IMPROVEMENT: Smart Refresh Logic
@@ -125,11 +130,12 @@ class BticinoBaseNumber(CoordinatorEntity, NumberEntity):
         # 2. If NOT in Cool Down, we refresh to apply new normal interval.
         # 3. If in Cool Down and force_refresh is False, we skip to avoid useless API calls.
         in_cool_down = getattr(self.coordinator, "in_cool_down", False)
-        
+
         if force_refresh or not in_cool_down:
             _LOGGER.debug(
-                "Triggering refresh. Force: %s, In CoolDown: %s", 
-                force_refresh, in_cool_down
+                "Triggering refresh. Force: %s, In CoolDown: %s",
+                force_refresh,
+                in_cool_down,
             )
             await self.coordinator.async_request_refresh()
 
@@ -139,12 +145,13 @@ class BticinoUpdateIntervalNumber(BticinoBaseNumber):
     Configuration entity to adjust the Normal Polling Interval.
     Default: 15 minutes.
     """
+
     _attr_name = "Update Interval"
     _attr_icon = "mdi:timer-cog"
     _attr_key = "bticino_update_interval"
     _attr_native_unit_of_measurement = UnitOfTime.MINUTES
     _attr_device_class = NumberDeviceClass.DURATION
-    
+
     # Boundaries from const.py
     _attr_native_min_value = MIN_UPDATE_INTERVAL
     _attr_native_max_value = MAX_UPDATE_INTERVAL
@@ -154,7 +161,7 @@ class BticinoUpdateIntervalNumber(BticinoBaseNumber):
     def native_value(self) -> float:
         """
         Return the ACTIVE polling interval in minutes.
-        We return 'self.coordinator.update_interval' instead of 'normal_interval'. 
+        We return 'self.coordinator.update_interval' instead of 'normal_interval'.
         If the system is in Cool Down (Ban), this will correctly show 60 minutes
         instead of the configured 15, reflecting the real system behavior.
         """
@@ -168,17 +175,19 @@ class BticinoUpdateIntervalNumber(BticinoBaseNumber):
         # 1. Update Coordinator Memory
         new_delta = timedelta(minutes=new_minutes)
         self.coordinator.normal_interval = new_delta
-        
+
         # 2. Apply immediately ONLY if not in Cool Down mode
         # Use safer attribute check for 'in_cool_down' using getattr
         in_cool_down = getattr(self.coordinator, "in_cool_down", False)
-        
+
         if not in_cool_down:
             self.coordinator.update_interval = new_delta
 
         # 3. Save to Disk
         # We DO NOT force refresh here if banned, as normal interval doesn't matter during a ban.
-        await self._update_config_entry(CONF_UPDATE_INTERVAL, new_minutes, force_refresh=False)
+        await self._update_config_entry(
+            CONF_UPDATE_INTERVAL, new_minutes, force_refresh=False
+        )
 
 
 class BticinoCoolDownNumber(BticinoBaseNumber):
@@ -186,12 +195,13 @@ class BticinoCoolDownNumber(BticinoBaseNumber):
     Configuration entity to adjust the Cool Down Interval (Ban Wait Time).
     Default: 60 minutes.
     """
+
     _attr_name = "Cool Down Interval"
     _attr_icon = "mdi:timer-lock-open"
     _attr_key = "bticino_cool_down"
     _attr_native_unit_of_measurement = UnitOfTime.MINUTES
     _attr_device_class = NumberDeviceClass.DURATION
-    
+
     # Boundaries from const.py
     _attr_native_min_value = MIN_COOL_DOWN
     _attr_native_max_value = MAX_COOL_DOWN
@@ -210,16 +220,16 @@ class BticinoCoolDownNumber(BticinoBaseNumber):
         # 1. Update Coordinator Memory
         new_delta = timedelta(minutes=new_minutes)
         self.coordinator.cool_down_interval = new_delta
-        
+
         # 2. Apply immediately ONLY if currently in Cool Down mode
         # Use specific boolean flag.
         in_cool_down = getattr(self.coordinator, "in_cool_down", False)
-        
+
         if in_cool_down:
-             self.coordinator.update_interval = new_delta
+            self.coordinator.update_interval = new_delta
 
         # 3. Save to Disk and FORCE REFRESH
-        # If the user changes this value, they likely want to shorten the wait 
+        # If the user changes this value, they likely want to shorten the wait
         # and try again immediately, so we bypass the cool down check for the refresh.
         await self._update_config_entry(CONF_COOL_DOWN, new_minutes, force_refresh=True)
 
@@ -229,16 +239,17 @@ class BticinoDebounceNumber(BticinoBaseNumber):
     Configuration entity to adjust the Webhook Debounce time.
     Default: 1.0 second.
     """
+
     _attr_name = "Webhook Debounce"
     _attr_icon = "mdi:traffic-light"
     _attr_key = "bticino_webhook_debounce"
     _attr_native_unit_of_measurement = UnitOfTime.SECONDS
-    
+
     # Boundaries from const.py
     _attr_native_min_value = MIN_DEBOUNCE
     _attr_native_max_value = MAX_DEBOUNCE
     _attr_native_step = 0.1  # Allow decimal precision
-    
+
     # Force display precision to 1 decimal place (e.g. "1.0")
     _attr_native_precision = 1
 
@@ -255,6 +266,6 @@ class BticinoDebounceNumber(BticinoBaseNumber):
 
         # 1. Update Coordinator Memory
         self.coordinator.debounce_time = value
-        
+
         # 2. Save to Disk
         await self._update_config_entry(CONF_DEBOUNCE, value, force_refresh=False)

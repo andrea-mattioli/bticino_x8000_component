@@ -1,8 +1,9 @@
 """Sensor platform for Bticino X8000 using DataUpdateCoordinator."""
 
 import logging
+from collections.abc import Sequence
 from functools import reduce
-from typing import Any, Sequence
+from typing import Any
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -12,10 +13,10 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     PERCENTAGE,
+    STATE_UNKNOWN,
+    EntityCategory,
     UnitOfTemperature,
     UnitOfTime,
-    EntityCategory,
-    STATE_UNKNOWN,
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceEntryType
@@ -51,6 +52,7 @@ LOAD_STATE_MAP = {
     "false": "off",
 }
 
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -65,9 +67,11 @@ async def async_setup_entry(
     # Use config data to iterate over selected thermostats.
     data = dict(config_entry.data)
     entities = []
-    
+
     selected_thermostats = data.get("selected_thermostats", [])
-    _LOGGER.debug("Found %d selected thermostats in configuration", len(selected_thermostats))
+    _LOGGER.debug(
+        "Found %d selected thermostats in configuration", len(selected_thermostats)
+    )
 
     for plant_data in selected_thermostats:
         plant_id = list(plant_data.keys())[0]
@@ -76,8 +80,10 @@ async def async_setup_entry(
         topology_id = thermo_data.get("id")
         thermostat_name = thermo_data.get("name")
         programs = thermo_data.get("programs", [])
-        
-        _LOGGER.debug("Creating sensors for thermostat: %s (ID: %s)", thermostat_name, topology_id)
+
+        _LOGGER.debug(
+            "Creating sensors for thermostat: %s (ID: %s)", thermostat_name, topology_id
+        )
 
         # Create standard sensors
         sensors_classes = [
@@ -91,9 +97,7 @@ async def async_setup_entry(
 
         for sensor_class in sensors_classes:
             entities.append(
-                sensor_class(
-                    coordinator, plant_id, topology_id, thermostat_name
-                )
+                sensor_class(coordinator, plant_id, topology_id, thermostat_name)
             )
 
         # Create Program sensor (needs extra argument for program list)
@@ -102,7 +106,7 @@ async def async_setup_entry(
                 coordinator, plant_id, topology_id, thermostat_name, programs
             )
         )
-    
+
     # --- NEW: Singleton API Counter Sensor (Engineering Solution) ---
     entities.append(BticinoApiCountSensor(coordinator))
     # ---------------------------------------------------------------
@@ -163,15 +167,13 @@ class BticinoBaseSensor(CoordinatorEntity, SensorEntity):
         super()._handle_coordinator_update()
 
     def _get_nested_value(
-        self, 
-        path: Sequence[Any], 
-        cast_type: type | None = None, 
-        default: Any = None
+        self, path: Sequence[Any], cast_type: type | None = None, default: Any = None
     ) -> Any:
         """
         Extract nested value safely handling both int and str keys.
         Enhanced logic to handle mixed key types (e.g., list indices as strings).
         """
+
         def get_item(container, key):
             # Handle Dictionary
             if isinstance(container, dict):
@@ -179,7 +181,7 @@ class BticinoBaseSensor(CoordinatorEntity, SensorEntity):
                 if key in container:
                     return container[key]
                 return container.get(str(key))
-            
+
             # Handle List/Tuple
             if isinstance(container, (list, tuple)):
                 try:
@@ -193,10 +195,10 @@ class BticinoBaseSensor(CoordinatorEntity, SensorEntity):
 
         try:
             value = reduce(get_item, path, self._thermostat_data)
-            
+
             if value is not None and cast_type is not None:
                 return cast_type(value)
-            
+
             return value if value is not None else default
         except Exception:
             # Catch-all for unexpected structure changes to prevent crash
@@ -233,7 +235,7 @@ class BticinoTemperatureSensor(BticinoBaseSensor):
         """Add raw data attributes for debugging (only if debug enabled)."""
         if not _LOGGER.isEnabledFor(logging.DEBUG):
             return {}
-            
+
         return {
             "_raw_measure_data": self._get_nested_value(["thermometer", "measures", 0]),
             "_last_coordinator_success": self.coordinator.last_update_success,
@@ -270,7 +272,7 @@ class BticinoHumiditySensor(BticinoBaseSensor):
         """Add raw data attributes for debugging (only if debug enabled)."""
         if not _LOGGER.isEnabledFor(logging.DEBUG):
             return {}
-            
+
         return {
             "_raw_measure_data": self._get_nested_value(["hygrometer", "measures", 0]),
         }
@@ -306,7 +308,7 @@ class BticinoTargetTemperatureSensor(BticinoBaseSensor):
         """Add raw data attributes for debugging (only if debug enabled)."""
         if not _LOGGER.isEnabledFor(logging.DEBUG):
             return {}
-            
+
         return {
             "_raw_setpoint_data": self._get_nested_value(["setPoint"]),
         }
@@ -339,10 +341,10 @@ class BticinoProgramSensor(BticinoBaseSensor):
         """
         if not super().available:
             return False
-        
+
         # We need a program number from the API to display anything useful
         prog_number = self._get_nested_value(["programs", 0, "number"], int)
-        
+
         # Also ensure we actually have programs configured
         return prog_number is not None and len(self._programs) > 0
 
@@ -366,7 +368,7 @@ class BticinoProgramSensor(BticinoBaseSensor):
         """
         if not _LOGGER.isEnabledFor(logging.DEBUG):
             return {}
-            
+
         return {
             "_raw_program_data": self._get_nested_value(["programs", 0]),
         }
@@ -394,7 +396,7 @@ class BticinoModeSensor(BticinoBaseSensor):
         """Add raw data attributes for debugging consistency."""
         if not _LOGGER.isEnabledFor(logging.DEBUG):
             return {}
-            
+
         return {
             "_raw_mode": self._thermostat_data.get("mode"),
         }
@@ -421,7 +423,7 @@ class BticinoStatusSensor(BticinoBaseSensor):
         """Add raw data attributes for debugging consistency."""
         if not _LOGGER.isEnabledFor(logging.DEBUG):
             return {}
-            
+
         return {
             "_raw_load_state": self._thermostat_data.get("loadState"),
         }
@@ -445,7 +447,7 @@ class BticinoBoostTimeRemainingSensor(BticinoBaseSensor):
         """Only available if Boost is active."""
         if not super().available:
             return False
-        
+
         mode = self._thermostat_data.get("mode", "").lower()
         return mode == "boost"
 
@@ -453,7 +455,7 @@ class BticinoBoostTimeRemainingSensor(BticinoBaseSensor):
     def native_value(self) -> int | None:
         """Return remaining boost time in minutes."""
         data = self._thermostat_data
-        
+
         # Early exit if not in boost mode.
         mode = data.get("mode", "").lower()
         if mode != "boost" or "activationTime" not in data:
@@ -471,11 +473,11 @@ class BticinoBoostTimeRemainingSensor(BticinoBaseSensor):
                 now = dt_util.utcnow()
                 end_time = dt_util.as_utc(end_time)
                 remaining_seconds = (end_time - now).total_seconds()
-                
-                # Tolerance (+30s) allows for clock skew between the API server 
+
+                # Tolerance (+30s) allows for clock skew between the API server
                 # and Home Assistant, preventing premature zero/negative values.
                 val = max(0, int((remaining_seconds + 30) / 60))
-                
+
                 # Optional: Ensure we don't return 0 if available implies active
                 return val
         except (ValueError, TypeError, IndexError):
@@ -490,13 +492,14 @@ class BticinoBoostTimeRemainingSensor(BticinoBaseSensor):
         """Added raw attributes for debugging consistency."""
         if not _LOGGER.isEnabledFor(logging.DEBUG):
             return {}
-            
+
         return {
             "_raw_activation_time": self._thermostat_data.get("activationTime"),
         }
 
 
 # --- SPECIAL DIAGNOSTIC SENSOR ---
+
 
 class BticinoApiCountSensor(CoordinatorEntity, SensorEntity):
     """
@@ -509,7 +512,7 @@ class BticinoApiCountSensor(CoordinatorEntity, SensorEntity):
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_native_unit_of_measurement = "calls"
     _attr_has_entity_name = True
-    _attr_force_update = True 
+    _attr_force_update = True
 
     def __init__(self, coordinator: BticinoCoordinator):
         super().__init__(coordinator)

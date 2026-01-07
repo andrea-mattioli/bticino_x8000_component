@@ -2,9 +2,9 @@
 
 # mypy: disable-error-code=no-any-return
 # pylint: disable=W0223
+import asyncio  # Added for timeouts
 import logging
 import secrets
-import asyncio  # Added for timeouts
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -30,6 +30,7 @@ _LOGGER = logging.getLogger(__name__)
 # Timeout for API calls during config flow (seconds)
 API_TIMEOUT = 20
 
+
 class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Bticino ConfigFlow."""
 
@@ -45,7 +46,7 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> config_entries.ConfigFlowResult:
         """User configuration."""
         errors = {}
-        
+
         if self.hass.config.external_url is not None:
             external_url = self.hass.config.external_url
         else:
@@ -63,11 +64,11 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             for key, value in user_input.items():
                 if isinstance(value, str) and not value.strip():
                     errors[key] = "value_empty"
-            
+
             if not errors:
                 self.data = user_input
                 authorization_url = self.get_authorization_url(user_input)
-                
+
                 # IMPROVEMENT (UX): Move Auth URL to description_placeholders
                 # instead of showing it as an error message.
                 return self.async_show_form(
@@ -77,7 +78,7 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             vol.Required(
                                 "browser_url",
                                 description="Paste here the browser URL",
-                                default="", 
+                                default="",
                             ): str,
                         }
                     ),
@@ -164,19 +165,23 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self.bticino_api = BticinoX8000Api(self.hass, self.data)
 
                 if not await self.bticino_api.check_api_endpoint_health():
-                    return self.async_abort(reason="Auth Failed! API endpoint unreachable.")
+                    return self.async_abort(
+                        reason="Auth Failed! API endpoint unreachable."
+                    )
 
                 # IMPROVEMENT: Fetch plants with Timeout & Robust Parsing
                 try:
                     async with asyncio.timeout(API_TIMEOUT):
                         plants_data = await self.bticino_api.get_plants()
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     return self.async_abort(reason="Timeout retrieving plants.")
-                
+
                 # Check status code
                 if plants_data.get("status_code") != 200:
                     _LOGGER.error("Failed to get plants: %s", plants_data)
-                    return self.async_abort(reason="API Error: Could not retrieve plants.")
+                    return self.async_abort(
+                        reason="API Error: Could not retrieve plants."
+                    )
 
                 # Robust Parsing: Handle nested structure safely
                 plants_payload = plants_data.get("data", {})
@@ -186,14 +191,18 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     plants_list = plants_payload.get("plants", [])
                 elif isinstance(plants_payload, list):
                     plants_list = plants_payload
-                
+
                 if not isinstance(plants_list, list):
-                    _LOGGER.error("Unexpected API structure for plants: %s", type(plants_payload))
+                    _LOGGER.error(
+                        "Unexpected API structure for plants: %s", type(plants_payload)
+                    )
                     plants_list = []
 
                 # Unique list of IDs
-                plant_ids = list({plant.get("id") for plant in plants_list if plant.get("id")})
-                
+                plant_ids = list(
+                    {plant.get("id") for plant in plants_list if plant.get("id")}
+                )
+
                 self._selection_map = {}
 
                 for plant_id in plant_ids:
@@ -201,16 +210,18 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         # IMPROVEMENT: Timeout for Topology
                         async with asyncio.timeout(API_TIMEOUT):
                             topologies = await self.bticino_api.get_topology(plant_id)
-                        
+
                         if topologies.get("status_code") != 200:
                             continue
 
                         # Robust Parsing for Topology
                         topo_data = topologies.get("data", {})
                         modules = []
-                        
+
                         # Handle potential nesting: plant -> modules OR just modules
-                        if "plant" in topo_data and isinstance(topo_data["plant"], dict):
+                        if "plant" in topo_data and isinstance(
+                            topo_data["plant"], dict
+                        ):
                             modules = topo_data["plant"].get("modules", [])
                         elif "modules" in topo_data:
                             modules = topo_data.get("modules", [])
@@ -220,28 +231,34 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         for thermo in modules:
                             if not isinstance(thermo, dict) or "id" not in thermo:
                                 continue
-                                
+
                             thermo_name = thermo.get("name", "Unknown")
-                            
+
                             # IMPROVEMENT: Fetch programs with safe timeout handling inside helper
                             try:
-                                programs = await self.get_programs_from_api(plant_id, thermo["id"])
+                                programs = await self.get_programs_from_api(
+                                    plant_id, thermo["id"]
+                                )
                             except Exception:
-                                _LOGGER.warning("Could not fetch programs for %s", thermo_name)
+                                _LOGGER.warning(
+                                    "Could not fetch programs for %s", thermo_name
+                                )
                                 programs = []
 
                             # IMPROVEMENT (UX): Disambiguate names by adding Plant ID
                             display_name = f"{thermo_name} (Plant {plant_id})"
-                            
+
                             self._selection_map[display_name] = {
                                 "id": thermo["id"],
                                 "name": thermo_name,
                                 "programs": programs,
-                                "plant_id": plant_id # Store plant_id for later retrieval
+                                "plant_id": plant_id,  # Store plant_id for later retrieval
                             }
-                            
-                    except asyncio.TimeoutError:
-                        _LOGGER.warning("Timeout fetching topology for plant %s", plant_id)
+
+                    except TimeoutError:
+                        _LOGGER.warning(
+                            "Timeout fetching topology for plant %s", plant_id
+                        )
                         continue
                     except Exception as e:
                         _LOGGER.error("Error processing plant %s: %s", plant_id, e)
@@ -296,7 +313,7 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     programs = await self.bticino_api.get_chronothermostat_programlist(
                         plant_id, topology_id
                     )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 return []
 
             if programs.get("status_code") != 200:
@@ -305,18 +322,18 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Robust Parsing for Programs
             data = programs.get("data", {})
             chrono_list = []
-            
+
             if "chronothermostats" in data:
-                 chrono_list = data["chronothermostats"]
+                chrono_list = data["chronothermostats"]
             elif isinstance(data, list):
-                 chrono_list = data # Rare case
-            
+                chrono_list = data  # Rare case
+
             if chrono_list and isinstance(chrono_list, list) and len(chrono_list) > 0:
                 item = chrono_list[0]
                 if isinstance(item, dict):
                     programs_list = item.get("programs", [])
                     return [p for p in programs_list if p.get("number") != 0]
-            
+
             return []
         return None
 
@@ -324,22 +341,22 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any]
     ) -> config_entries.ConfigFlowResult:
         """User can select one o more thermostat to add."""
-        
+
         # IMPROVEMENT: Reconstruct structure using the Selection Map
         # This properly maps the selected "Display Names" back to the full data objects
         # and groups them by plant_id as expected by the integration structure.
-        
+
         # Structure target: [ { plant_id: { id: ..., name: ..., programs: ..., webhook_id: ... } } ]
         final_selection = []
-        
+
         for display_name in user_input["selected_thermostats"]:
             if display_name in self._selection_map:
                 thermo_data = self._selection_map[display_name]
-                plant_id = thermo_data.pop("plant_id") # Remove helper key
-                
+                plant_id = thermo_data.pop("plant_id")  # Remove helper key
+
                 # Add webhook ID
                 thermo_data["webhook_id"] = generate_id()
-                
+
                 final_selection.append({plant_id: thermo_data})
 
         return self.async_create_entry(
