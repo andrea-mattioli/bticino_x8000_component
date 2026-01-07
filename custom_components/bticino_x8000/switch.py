@@ -3,7 +3,7 @@
 import logging
 from typing import Any
 
-from homeassistant.components.switch import SwitchEntity, SwitchDeviceClass
+from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
@@ -13,8 +13,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
-    DOMAIN,
     CONF_NOTIFY_ERRORS,
+    DOMAIN,
 )
 from .coordinator import BticinoCoordinator
 
@@ -40,7 +40,7 @@ async def async_setup_entry(
 class BticinoNotifyErrorsSwitch(CoordinatorEntity, SwitchEntity):
     """
     Configuration switch to enable/disable persistent error notifications.
-    
+
     If ON: Rate Limit (429) errors will show a yellow notification in the HA Dashboard.
     If OFF: Errors are only logged to the system log (silent mode).
     """
@@ -67,7 +67,7 @@ class BticinoNotifyErrorsSwitch(CoordinatorEntity, SwitchEntity):
             model="API Gateway",
             entry_type=DeviceEntryType.SERVICE,
         )
-    
+
     @property
     def available(self) -> bool:
         """
@@ -91,19 +91,20 @@ class BticinoNotifyErrorsSwitch(CoordinatorEntity, SwitchEntity):
 
     async def _update_notification_setting(self, enabled: bool) -> None:
         """Helper to update the setting in memory and persist it to disk."""
-        _LOGGER.info("User changed Error Notifications to %s", "ON" if enabled else "OFF")
+        _LOGGER.info(
+            "User changed Error Notifications to %s", "ON" if enabled else "OFF"
+        )
 
         # 1. Update Coordinator Memory (Immediate effect)
         self.coordinator.notify_errors = enabled
-        
+
         # 2. Update Home Assistant State (UI Feedback)
         self.async_write_ha_state()
 
         # 3. Persist to Config Entry Options (Save to disk)
         new_options = dict(self.coordinator.entry.options)
         new_options[CONF_NOTIFY_ERRORS] = enabled
-        
+
         await self.hass.config_entries.async_update_entry(
-            self.coordinator.entry, 
-            options=new_options
+            self.coordinator.entry, options=new_options
         )

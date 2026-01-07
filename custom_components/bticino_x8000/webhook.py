@@ -2,14 +2,16 @@
 
 import logging
 
+# Type checking import only to avoid circular dependency at runtime
+from typing import TYPE_CHECKING
+
 from aiohttp.web import Request, Response
 from homeassistant.components.webhook import async_register as webhook_register
 from homeassistant.components.webhook import async_unregister as webhook_unregister
 from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
-# Type checking import only to avoid circular dependency at runtime
-from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     from .coordinator import BticinoCoordinator
 
@@ -45,7 +47,7 @@ class BticinoX8000WebhookHandler:
         # Instead of using dispatcher, we push data directly to the coordinator.
         # We iterate over all loaded entries for this domain because the webhook
         # does not carry the config_entry_id, but the coordinator filters by topology_id.
-        
+
         if DOMAIN in hass.data:
             found_coordinator = False
             for entry_id, coordinator in hass.data[DOMAIN].items():
@@ -53,9 +55,11 @@ class BticinoX8000WebhookHandler:
                 if hasattr(coordinator, "update_from_webhook"):
                     coordinator.update_from_webhook(data)
                     found_coordinator = True
-            
+
             if not found_coordinator:
-                _LOGGER.warning("Received webhook but no active coordinator found to handle it.")
+                _LOGGER.warning(
+                    "Received webhook but no active coordinator found to handle it."
+                )
         else:
             _LOGGER.warning("Received webhook but Bticino integration is not loaded.")
 
