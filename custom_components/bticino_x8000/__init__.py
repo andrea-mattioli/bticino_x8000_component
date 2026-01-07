@@ -59,11 +59,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
     # 5. Register Webhook Handler (Home Assistant Side)
+    # This is local, so we can do it even if banned.
     webhook_handler = BticinoX8000WebhookHandler(hass, WEBHOOK_ID)
     await webhook_handler.async_register_webhook()
 
     # 6. Subscribe to C2C Notifications (Legrand Side)
-    if "selected_thermostats" in entry.data:
+    # OPTIMIZATION: Check if we are already banned (Cool Down Mode).
+    # If the initial refresh failed with 429, these calls will definitely fail too.
+    # We skip them to avoid increasing the ban counter on the server.
+    if coordinator.update_interval == coordinator.cool_down_interval:
+        _LOGGER.warning("Skipping C2C Subscription due to active Rate Limit (Cool Down Mode).")
+    
+    elif "selected_thermostats" in entry.data:
         plant_ids = set()
         for plant_data in entry.data["selected_thermostats"]:
             p_id = list(plant_data.keys())[0]

@@ -67,6 +67,11 @@ class BticinoX8000Api:
         Handles Rate Limiting (Exponential Backoff), Session reuse, and Retries.
         Raises specific exceptions (RateLimitError, AuthError) on failure.
         """
+        # CRITICAL FIX: Increment counter immediately when function is called.
+        # This ensures the UI sensor updates to show activity even if the request 
+        # is later skipped due to auth errors or rate limits.
+        self.call_count += 1
+
         if self.auth_broken:
             _LOGGER.warning("Authentication previously broken. Skipping request to %s", url)
             raise AuthError("Authentication is broken")
@@ -91,8 +96,7 @@ class BticinoX8000Api:
                     if payload:
                         request_args["json"] = payload
 
-                    # INCREMENT COUNTER: This counts every actual HTTP attempt
-                    self.call_count += 1
+                    # Log the attempt (Counter is already incremented above)
                     _LOGGER.debug(
                         "API Call #%s | Attempt %s/%s: %s %s", 
                         self.call_count, attempts, max_attempts, method, url

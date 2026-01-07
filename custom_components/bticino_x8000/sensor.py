@@ -404,3 +404,17 @@ class BticinoApiCountSensor(CoordinatorEntity, SensorEntity):
     def native_value(self) -> int:
         """Return the total number of API calls made since boot."""
         return self.coordinator.api.call_count
+    
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """
+        Force UI update even if Coordinator failed.
+        
+        The standard behavior of CoordinatorEntity is to skip state updates
+        if the coordinator signals an update failure (like our 429 error).
+        
+        However, for this specific sensor, we WANT to see the counter increment
+        even if the call failed, because the attempt itself counts towards the limit
+        and proves the system is trying to reconnect.
+        """
+        self.async_write_ha_state()
