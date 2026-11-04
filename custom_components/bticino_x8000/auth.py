@@ -7,7 +7,7 @@ from typing import Any
 import aiohttp
 from homeassistant.util import dt as dt_util
 
-from .const import AUTH_REQ_ENDPOINT, DEFAULT_AUTH_BASE_URL
+from .const import AUTH_REQ_ENDPOINT, DEFAULT_AUTH_BASE_URL, DEFAULT_REDIRECT_URI
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -17,11 +17,15 @@ async def exchange_code_for_tokens(  # pylint: disable=too-many-locals
 ) -> tuple[str, Any, Any]:
     """Get access token from authorization code."""
     token_url = f"{DEFAULT_AUTH_BASE_URL}{AUTH_REQ_ENDPOINT}"
+    # redirect_uri must be the one used in the authorize request (RFC 6749
+    # 4.1.3). Without it, Legrand's Azure B2C rejects the code with
+    # "AADB2C90085 ... internal error" when the app has more than one reply URL.
     payload = {
         "code": code,
         "grant_type": "authorization_code",
         "client_secret": client_secret,
         "client_id": client_id,
+        "redirect_uri": DEFAULT_REDIRECT_URI,
     }
 
     _LOGGER.debug("exchange_code_for_tokens - Requesting token from: %s", token_url)
