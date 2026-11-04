@@ -5,25 +5,39 @@ from typing import Any
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
+from . import get_api
 from .api import BticinoX8000Api
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
 
+def _climate_entity_id(hass: HomeAssistant, topology_id: str) -> str | None:
+    """Return the real entity_id of the thermostat's climate entity.
+
+    The entity_id must not be guessed from the thermostat name: it differs as
+    soon as the name has special characters or the user renamed the entity.
+    """
+    return er.async_get(hass).async_get_entity_id(
+        "climate", DOMAIN, f"{topology_id}_climate"
+    )
+
+
 async def async_setup_entry(
-    hass: HomeAssistant,  # pylint: disable=unused-argument
+    hass: HomeAssistant,
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Bticino X8000 select entities."""
     data = dict(config_entry.data)
+    api = get_api(hass, config_entry)
     entities: list[SelectEntity] = []
 
     # Aggiungi select per ogni termostato
@@ -38,7 +52,7 @@ async def async_setup_entry(
         # Select per i programmi
         if programs:
             program_select = BticinoProgramSelect(
-                data=data,
+                api=api,
                 plant_id=plant_id,
                 topology_id=thermostat_id,
                 thermostat_name=thermostat_name,
@@ -53,7 +67,7 @@ async def async_setup_entry(
 
         # Select per il boost (uno per termostato)
         boost_select = BticinoBoostSelect(
-            data=data,
+            api=api,
             plant_id=plant_id,
             topology_id=thermostat_id,
             thermostat_name=thermostat_name,
@@ -73,14 +87,14 @@ class BticinoBoostSelect(SelectEntity):  # pylint: disable=too-many-instance-att
 
     def __init__(  # pylint: disable=too-many-arguments
         self,
-        data: dict[str, Any],
+        api: BticinoX8000Api,
         plant_id: str,
         topology_id: str,
         thermostat_name: str,
         programs: list[dict[str, Any]],
     ) -> None:
         """Initialize the boost select."""
-        self._bticino_api = BticinoX8000Api(data)
+        self._bticino_api = api
         self._plant_id = plant_id
         self._topology_id = topology_id
         self._thermostat_name = thermostat_name
@@ -91,6 +105,7 @@ class BticinoBoostSelect(SelectEntity):  # pylint: disable=too-many-instance-att
         self._attr_icon = "mdi:play-speed"
         self._attr_unique_id = f"{DOMAIN}_{topology_id}_boost"
         self._attr_current_option = "off"  # Default: sarà aggiornato da async_update
+        self._last_program_number: int | None = None
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -104,15 +119,18 @@ class BticinoBoostSelect(SelectEntity):  # pylint: disable=too-many-instance-att
 
     async def async_added_to_hass(self) -> None:
         """Register dispatcher connection for webhook updates."""
-        async_dispatcher_connect(  # type: ignore[has-type]
-            self.hass,
-            f"{DOMAIN}_webhook_update",
-            self.handle_webhook_update,
+        self.async_on_remove(
+            async_dispatcher_connect(  # type: ignore[has-type]
+                self.hass,
+                f"{DOMAIN}_webhook_update",
+                self.handle_webhook_update,
+            )
         )
         _LOGGER.debug(
             "Boost select %s connected to webhook dispatcher", self._thermostat_name
         )
 
+    @callback
     def handle_webhook_update(self, event: dict[str, Any]) -> None:
         """Handle webhook updates for boost state."""
         try:
@@ -134,7 +152,7 @@ class BticinoBoostSelect(SelectEntity):  # pylint: disable=too-many-instance-att
 
                 # Aggiorna stato boost
                 self._update_boost_state_from_data(chrono_data)
-                self.schedule_update_ha_state()
+                self.async_write_ha_state()
                 _LOGGER.debug(
                     "Boost select updated from webhook for %s: %s",
                     self._thermostat_name,
@@ -153,7 +171,10 @@ class BticinoBoostSelect(SelectEntity):  # pylint: disable=too-many-instance-att
         self, chrono_data: dict[str, Any]
     ) -> None:
         """Update boost state from chronothermostat data."""
-        mode = chrono_data.get("mode", "").lower()
+        mode = (chrono_data.get("mode") or "").lower()
+        programs = chrono_data.get("programs") or []
+        if programs and programs[0].get("number") is not None:
+            self._last_program_number = programs[0]["number"]
 
         if mode == "boost":
             if "activationTime" in chrono_data:
@@ -262,16 +283,30 @@ class BticinoBoostSelect(SelectEntity):  # pylint: disable=too-many-instance-att
             )
             return
 
-        self._attr_current_option = option
-        self.schedule_update_ha_state()
+        climate_entity_id = _climate_entity_id(self.hass, self._topology_id)
+        if climate_entity_id is None:
+            _LOGGER.error(
+                "Climate entity for thermostat %s not found in the entity registry",
+                self._thermostat_name,
+            )
+            return
 
-        climate_entity_id = f"climate.{self._thermostat_name.lower().replace(' ', '_')}"
+        self._attr_current_option = option
+        self.async_write_ha_state()
 
         if option == "off":
-            # Torna al programma automatico (disattiva boost)
-            # Prendi il primo programma come default
+            # Back to automatic mode with the program that was active before
+            # the boost (first program if unknown)
             if self._programs:
-                default_program = self._programs[0]["name"]
+                default_program = next(
+                    (
+                        prog["name"]
+                        for prog in self._programs
+                        if self._last_program_number is not None
+                        and int(prog["number"]) == int(self._last_program_number)
+                    ),
+                    self._programs[0]["name"],
+                )
                 await self.hass.services.async_call(
                     DOMAIN,
                     "set_schedule",
@@ -324,14 +359,14 @@ class BticinoProgramSelect(
 
     def __init__(  # pylint: disable=too-many-arguments
         self,
-        data: dict[str, Any],
+        api: BticinoX8000Api,
         plant_id: str,
         topology_id: str,
         thermostat_name: str,
         programs: list[dict[str, Any]],
     ) -> None:
         """Initialize the program select."""
-        self._bticino_api = BticinoX8000Api(data)
+        self._bticino_api = api
         self._plant_id = plant_id
         self._topology_id = topology_id
         self._thermostat_name = thermostat_name
@@ -360,15 +395,18 @@ class BticinoProgramSelect(
 
     async def async_added_to_hass(self) -> None:
         """Register dispatcher connection for webhook updates."""
-        async_dispatcher_connect(  # type: ignore[has-type]
-            self.hass,
-            f"{DOMAIN}_webhook_update",
-            self.handle_webhook_update,
+        self.async_on_remove(
+            async_dispatcher_connect(  # type: ignore[has-type]
+                self.hass,
+                f"{DOMAIN}_webhook_update",
+                self.handle_webhook_update,
+            )
         )
         _LOGGER.debug(
             "Program select %s connected to webhook dispatcher", self._thermostat_name
         )
 
+    @callback
     def handle_webhook_update(self, event: dict[str, Any]) -> None:
         """Handle webhook updates for program state."""
         try:
@@ -390,7 +428,7 @@ class BticinoProgramSelect(
 
                 # Aggiorna stato programma
                 self._update_program_state_from_data(chrono_data)
-                self.schedule_update_ha_state()
+                self.async_write_ha_state()
                 _LOGGER.debug(
                     "Program select updated from webhook for %s: %s",
                     self._thermostat_name,
@@ -407,16 +445,17 @@ class BticinoProgramSelect(
 
     def _update_program_state_from_data(self, chrono_data: dict[str, Any]) -> None:
         """Update program state from chronothermostat data."""
-        mode = chrono_data.get("mode", "").lower()
+        mode = (chrono_data.get("mode") or "").lower()
 
         # Se è in modalità automatica, leggi il programma attivo
         if mode == "automatic" and "programs" in chrono_data:
             program_list = chrono_data["programs"]
             if program_list:
                 program_number = program_list[0].get("number")
-                # Find the program name by number
+                # Find the program name by number. Legrand sends the number as
+                # a string ("2") while the stored program list has ints (2).
                 for prog in self._programs:
-                    if prog["number"] == program_number:
+                    if str(prog["number"]) == str(program_number):
                         self._attr_current_option = prog["name"]
                         return
 
@@ -454,15 +493,23 @@ class BticinoProgramSelect(
             )
             return
 
+        climate_entity_id = _climate_entity_id(self.hass, self._topology_id)
+        if climate_entity_id is None:
+            _LOGGER.error(
+                "Climate entity for thermostat %s not found in the entity registry",
+                self._thermostat_name,
+            )
+            return
+
         self._attr_current_option = option
-        self.schedule_update_ha_state()
+        self.async_write_ha_state()
 
         # Call the service to change program
         await self.hass.services.async_call(
             DOMAIN,
             "set_schedule",
             {
-                "entity_id": f"climate.{self._thermostat_name.lower().replace(' ', '_')}",
+                "entity_id": climate_entity_id,
                 "schedule_name": option,
             },
             blocking=True,

@@ -82,12 +82,20 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
 
         self.data = user_input
-        authorization_url = self.get_authorization_url(user_input)
+        return self._show_authorize_form()
+
+    def _show_authorize_form(
+        self, error: str | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Show the Legrand authorization link and ask for the redirect URL."""
+        authorization_url = self.get_authorization_url(self.data)
         message = (
             f"Click the link below to authorize Bticino X8000. "
             f"After authorization, paste the browser URL here.\n\n"
             f"{authorization_url}"
         )
+        if error:
+            message = f"ERROR: {error}\n\n{message}"
         return self.async_show_form(
             step_id="get_authorize_code",
             data_schema=vol.Schema(
@@ -152,7 +160,13 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self.bticino_api = BticinoX8000Api(self.data)
 
                 if not await self.bticino_api.check_api_endpoint_health():
-                    return self.async_abort(reason="Auth Failed!")
+                    return self.async_abort(
+                        reason=(
+                            "Auth Failed! Legrand login succeeded, but the Smarther "
+                            f"API rejected the token ({self.bticino_api.last_error}). "
+                            "Check the Home Assistant log for the full response."
+                        )
+                    )
 
                 # Fetch and display the list of thermostats
                 plants_data = await self.bticino_api.get_plants()
@@ -261,8 +275,8 @@ class BticinoX8000ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             except ValueError as error:
                 _LOGGER.error(error)
-                return await self.async_step_get_authorize_code()
-        return await self.async_step_user(self.data)
+                return self._show_authorize_form(error=str(error))
+        return self._show_authorize_form()
 
     async def get_programs_from_api(
         self, plant_id: str, topology_id: str

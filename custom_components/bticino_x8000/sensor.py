@@ -12,7 +12,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, UnitOfTemperature, UnitOfTime
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -148,12 +148,15 @@ class BticinoBaseSensor(SensorEntity):
 
     async def async_added_to_hass(self) -> None:
         """Register dispatcher connection for webhook updates."""
-        async_dispatcher_connect(  # type: ignore[has-type]
-            self.hass,
-            f"{DOMAIN}_webhook_update",
-            self.handle_webhook_update,
+        self.async_on_remove(
+            async_dispatcher_connect(  # type: ignore[has-type]
+                self.hass,
+                f"{DOMAIN}_webhook_update",
+                self.handle_webhook_update,
+            )
         )
 
+    @callback
     def handle_webhook_update(self, event: dict[str, Any]) -> None:
         """Handle webhook updates - to be implemented by subclasses."""
 
@@ -178,6 +181,7 @@ class BticinoTemperatureSensor(BticinoBaseSensor):
         self._attr_unique_id = f"bticino_x8000_{topology_id}_temperature"
         self._attr_native_value = None
 
+    @callback
     def handle_webhook_update(self, event: dict[str, Any]) -> None:
         """Handle webhook updates for temperature."""
         _LOGGER.debug(
@@ -217,7 +221,7 @@ class BticinoTemperatureSensor(BticinoBaseSensor):
                 )[0]
                 if thermometer_data and "value" in thermometer_data:
                     self._attr_native_value = float(thermometer_data["value"])
-                    self.schedule_update_ha_state()
+                    self.async_write_ha_state()
                     _LOGGER.info(
                         "Temperature sensor updated for %s: %s°C",
                         self._thermostat_name,
@@ -260,6 +264,7 @@ class BticinoHumiditySensor(BticinoBaseSensor):
         self._attr_unique_id = f"bticino_x8000_{topology_id}_humidity"
         self._attr_native_value = None
 
+    @callback
     def handle_webhook_update(self, event: dict[str, Any]) -> None:
         """Handle webhook updates for humidity."""
         _LOGGER.debug(
@@ -292,7 +297,7 @@ class BticinoHumiditySensor(BticinoBaseSensor):
                 )[0]
                 if hygrometer_data and "value" in hygrometer_data:
                     self._attr_native_value = float(hygrometer_data["value"])
-                    self.schedule_update_ha_state()
+                    self.async_write_ha_state()
                     _LOGGER.info(
                         "Humidity sensor updated for %s: %s%%",
                         self._thermostat_name,
@@ -334,6 +339,7 @@ class BticinoTargetTemperatureSensor(BticinoBaseSensor):
         self._attr_unique_id = f"bticino_x8000_{topology_id}_target_temperature"
         self._attr_native_value = None
 
+    @callback
     def handle_webhook_update(self, event: dict[str, Any]) -> None:
         """Handle webhook updates for target temperature."""
         _LOGGER.debug(
@@ -356,10 +362,13 @@ class BticinoTargetTemperatureSensor(BticinoBaseSensor):
                     continue
 
                 # Update target temperature
-                set_point = chrono_data.get("setPoint", {})
-                if set_point and "value" in set_point:
-                    self._attr_native_value = float(set_point["value"])
-                    self.schedule_update_ha_state()
+                set_point = chrono_data.get("setPoint") or {}
+                if "value" in set_point:
+                    value = set_point["value"]
+                    self._attr_native_value = (
+                        float(value) if value is not None else None
+                    )
+                    self.async_write_ha_state()
                     _LOGGER.info(
                         "Target temperature sensor updated for %s: %s°C",
                         self._thermostat_name,
@@ -402,6 +411,7 @@ class BticinoProgramSensor(BticinoBaseSensor):
                 return program.get("name", "Unknown")
         return "Unknown"
 
+    @callback
     def handle_webhook_update(self, event: dict[str, Any]) -> None:
         """Handle webhook updates for current program."""
         try:
@@ -425,7 +435,7 @@ class BticinoProgramSensor(BticinoBaseSensor):
                 if programs and len(programs) > 0:
                     program_number = int(programs[0].get("number", 0))
                     self._attr_native_value = self._get_program_name(program_number)
-                    self.schedule_update_ha_state()
+                    self.async_write_ha_state()
                     _LOGGER.debug(
                         "Program sensor updated for %s: %s (number: %s)",
                         self._thermostat_name,
@@ -460,6 +470,7 @@ class BticinoModeSensor(BticinoBaseSensor):
         self._attr_unique_id = f"bticino_x8000_{topology_id}_mode"
         self._attr_native_value = None
 
+    @callback
     def handle_webhook_update(self, event: dict[str, Any]) -> None:
         """Handle webhook updates for mode."""
         try:
@@ -482,7 +493,7 @@ class BticinoModeSensor(BticinoBaseSensor):
                 mode = chrono_data.get("mode")
                 if mode:
                     self._attr_native_value = mode.lower()
-                    self.schedule_update_ha_state()
+                    self.async_write_ha_state()
                     _LOGGER.debug(
                         "Mode sensor updated for %s: %s",
                         self._thermostat_name,
@@ -516,6 +527,7 @@ class BticinoStatusSensor(BticinoBaseSensor):
         self._attr_unique_id = f"bticino_x8000_{topology_id}_status"
         self._attr_native_value = None
 
+    @callback
     def handle_webhook_update(self, event: dict[str, Any]) -> None:
         """Handle webhook updates for status."""
         try:
@@ -538,7 +550,7 @@ class BticinoStatusSensor(BticinoBaseSensor):
                 load_state = chrono_data.get("loadState")
                 if load_state:
                     self._attr_native_value = load_state.lower()
-                    self.schedule_update_ha_state()
+                    self.async_write_ha_state()
                     _LOGGER.debug(
                         "Status sensor updated for %s: %s",
                         self._thermostat_name,
@@ -574,6 +586,7 @@ class BticinoBoostTimeRemainingSensor(BticinoBaseSensor):
         self._attr_unique_id = f"bticino_x8000_{topology_id}_boost_time_remaining"
         self._attr_native_value = None
 
+    @callback
     def handle_webhook_update(  # pylint: disable=too-many-locals
         self, event: dict[str, Any]
     ) -> None:
@@ -621,7 +634,7 @@ class BticinoBoostTimeRemainingSensor(BticinoBaseSensor):
                 else:
                     self._attr_native_value = 0
 
-                self.schedule_update_ha_state()
+                self.async_write_ha_state()
                 return
         except (KeyError, ValueError, TypeError) as e:
             _LOGGER.error(
