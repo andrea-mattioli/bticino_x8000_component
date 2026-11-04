@@ -64,7 +64,7 @@ async def async_setup_entry(  # pylint: disable=too-many-statements,too-many-loc
         """Persist the current tokens and subscription ids."""
         hass.config_entries.async_update_entry(config_entry, data=copy.deepcopy(data))
 
-    async def add_c2c_subscription(  # pylint: disable=too-many-branches,too-many-nested-blocks
+    async def add_c2c_subscription(  # pylint: disable=too-many-branches,too-many-nested-blocks,too-many-return-statements
         plant_id: str, webhook_id: str
     ) -> str | None:
         """Subscribe C2C with automatic cleanup of orphaned subscriptions."""
@@ -167,9 +167,9 @@ async def async_setup_entry(  # pylint: disable=too-many-statements,too-many-loc
                 None,
             )
             for sub in own_subscriptions:
-                if sub.get("EndPointUrl") in configured_endpoints:
+                sub_id = str(sub.get("subscriptionId") or "")
+                if not sub_id or sub.get("EndPointUrl") in configured_endpoints:
                     continue
-                sub_id = sub.get("subscriptionId")
                 _LOGGER.debug(
                     "Deleting orphaned subscription: %s (endpoint: %s)",
                     sub_id,
