@@ -2,6 +2,7 @@
 
 # pylint: disable=duplicate-code
 
+import copy
 import logging
 from datetime import timedelta
 from typing import Any
@@ -26,6 +27,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
+from . import get_api
 from .api import BticinoX8000Api
 
 # from .input_select import BticinoX8000ProgramInputSelect
@@ -58,7 +60,7 @@ HVAC_MODES = ["heating", "cooling"]
 PRECISION_HALVES = 0.1
 
 
-# pylint: disable=R0902
+# pylint: disable=R0902,R0904
 # pylint: disable=W0223
 class BticinoX8000ClimateEntity(ClimateEntity):
     """Bticino X8000 Climate entity."""
@@ -70,12 +72,15 @@ class BticinoX8000ClimateEntity(ClimateEntity):
     _attr_hvac_mode = HVACMode.AUTO
     _attr_max_temp = DEFAULT_MAX_TEMP
     _attr_min_temp = DEFAULT_MIN_TEMP
-    _attr_should_poll = False  # NO POLLING! Updates via webhook only
+    # NO POLLING: Legrand allows ~500 API calls/day per subscription key.
+    # State arrives via C2C webhook; async_update only runs when explicitly
+    # requested (e.g. the homeassistant.update_entity service).
+    _attr_should_poll = False
     _custom_attributes: dict[str, Any] = {}
 
     def __init__(
         self,
-        data: dict[str, Any],
+        api: BticinoX8000Api,
         config: dict[str, Any],
     ) -> None:
         """Init."""
@@ -90,7 +95,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
         #            HVACAction.COOLING,
         #            HVACAction.OFF,
         #        ]
-        self._bticino_api = BticinoX8000Api(data)
+        self._bticino_api = api
         self._plant_id: str = config["plant_id"]
         self._topology_id: str = config["topology_id"]
         self._programs_name = config["programs"]
@@ -104,12 +109,100 @@ class BticinoX8000ClimateEntity(ClimateEntity):
         self._program: str = ""
         self._load_state: str = ""
         self._activation_time: str = ""
+        # Last state shown (may include a command applied locally) and last
+        # state actually reported by Legrand (webhook or API read).
+        self._last_chrono_data: dict[str, Any] | None = None
+        self._last_reported_data: dict[str, Any] | None = None
+
+    async def async_added_to_hass(self) -> None:
+        """Listen for webhook updates and load the initial state."""
+        self.async_on_remove(
+            async_dispatcher_connect(  # type: ignore[has-type]
+                self.hass,
+                f"{DOMAIN}_webhook_update",
+                self.handle_webhook_update,
+            )
+        )
+        if not self.has_data():
+            await self.async_sync_manual()
+
+    async def async_update(self) -> None:
+        """Fetch the current state from the API (one call, on request only)."""
+        await self.async_sync_manual()
+
+    def _with_sender(self, chrono_data: dict[str, Any]) -> dict[str, Any]:
+        """Make sure the data carries this thermostat's plant/module ids."""
+        data = copy.deepcopy(chrono_data)
+        sender = data.setdefault("sender", {})
+        plant = sender.setdefault("plant", {})
+        plant.setdefault("id", self._plant_id)
+        plant.setdefault("module", {}).setdefault("id", self._topology_id)
+        return data
+
+    def _dispatch_chronothermostat(
+        self, chrono_data: dict[str, Any], optimistic: bool = False
+    ) -> None:
+        """Send thermostat data to this climate entity and its sensors/selects."""
+        async_dispatcher_send(  # type: ignore[has-type]
+            self.hass,
+            f"{DOMAIN}_webhook_update",
+            {
+                "data": [
+                    {"data": {"chronothermostats": [self._with_sender(chrono_data)]}}
+                ],
+                "optimistic": optimistic,
+            },
+        )
+
+    def _set_point_for_payload(self) -> float | None:
+        """Return the set point, or the last one reported by the thermostat."""
+        if self._set_point is not None:
+            return self._set_point
+        value = ((self._last_reported_data or {}).get("setPoint") or {}).get("value")
+        return float(value) if value is not None else None
+
+    @staticmethod
+    def _program_numbers(programs: Any) -> list[int]:
+        return [int(p["number"]) for p in programs or [] if p.get("number") is not None]
+
+    def _apply_command_locally(
+        self, payload: dict[str, Any], response: dict[str, Any]
+    ) -> None:
+        """Show the commanded state right away, without an extra API call.
+
+        The next webhook notification (or a manual refresh) replaces it with
+        the real state reported by the thermostat.
+        """
+        if response.get("status_code") != 200 or self._last_chrono_data is None:
+            return
+        merged = copy.deepcopy(self._last_chrono_data)
+        merged.update(copy.deepcopy(payload))
+        if "activationTime" not in payload:
+            merged.pop("activationTime", None)
+        if (payload.get("mode") or "").lower() == "automatic":
+            # In automatic mode the program decides the set point: reuse the one
+            # last reported for the same program, otherwise it is unknown until
+            # the thermostat reports it.
+            reported = self._last_reported_data or {}
+            same_program = (reported.get("mode") or "").lower() == "automatic" and (
+                self._program_numbers(reported.get("programs"))
+                == self._program_numbers(payload.get("programs"))
+            )
+            merged["setPoint"] = (
+                copy.deepcopy(reported.get("setPoint"))
+                if same_program
+                else {"value": None}
+            )
+        _LOGGER.debug("Climate %s: applying command locally: %s", self._name, payload)
+        self._dispatch_chronothermostat(merged, optimistic=True)
 
     def _update_attrs(self, custom_attrs: dict[str, Any]) -> None:
         """Update custom attributes."""
         self._custom_attributes = custom_attrs
 
     def _get_program_name(self, program: list[dict[str, Any]]) -> str:
+        if not program:
+            return self._program
         for thermostat_program in self._programs_name:
             if int(program[0]["number"]) == int(thermostat_program["number"]):
                 program_name: str = thermostat_program["name"]
@@ -267,7 +360,9 @@ class BticinoX8000ClimateEntity(ClimateEntity):
                 or (topology_id != self._topology_id)
             ):
                 continue
-            set_point = chronothermostat_data.get("setPoint", {})
+            self._last_chrono_data = copy.deepcopy(chronothermostat_data)
+            if not event.get("optimistic"):
+                self._last_reported_data = copy.deepcopy(chronothermostat_data)
             thermometer_data = chronothermostat_data.get("thermometer", {}).get(
                 "measures", [{}]
             )[0]
@@ -306,9 +401,13 @@ class BticinoX8000ClimateEntity(ClimateEntity):
                         ],
                     }
                 )
-            self._set_point = float(set_point.get("value"))
-            self._temperature = float(thermometer_data.get("value"))
-            self._humidity = float(hygrometer_data.get("value"))
+            if "setPoint" in chronothermostat_data:
+                value = (chronothermostat_data.get("setPoint") or {}).get("value")
+                self._set_point = float(value) if value is not None else None
+            if thermometer_data.get("value") is not None:
+                self._temperature = float(thermometer_data["value"])
+            if hygrometer_data.get("value") is not None:
+                self._humidity = float(hygrometer_data["value"])
 
             _LOGGER.info(
                 "Climate %s updated from webhook: temp=%s°C, humidity=%s%%, "
@@ -331,7 +430,10 @@ class BticinoX8000ClimateEntity(ClimateEntity):
             payload = {
                 "function": self._function,
                 "mode": "automatic",
-                "setPoint": {"value": self._set_point, "unit": self.temperature_unit},
+                "setPoint": {
+                    "value": self._set_point_for_payload(),
+                    "unit": self.temperature_unit,
+                },
                 "programs": [{"number": self._program_number[0]["number"]}],
             }
         elif hvac_mode == "off":
@@ -343,14 +445,20 @@ class BticinoX8000ClimateEntity(ClimateEntity):
             payload = {
                 "function": "heating",
                 "mode": "manual",
-                "setPoint": {"value": self._set_point, "unit": self.temperature_unit},
+                "setPoint": {
+                    "value": self._set_point_for_payload(),
+                    "unit": self.temperature_unit,
+                },
                 "programs": [{"number": self._program_number[0]["number"]}],
             }
         elif hvac_mode == "cool":
             payload = {
                 "function": "cooling",
                 "mode": "manual",
-                "setPoint": {"value": self._set_point, "unit": self.temperature_unit},
+                "setPoint": {
+                    "value": self._set_point_for_payload(),
+                    "unit": self.temperature_unit,
+                },
                 "programs": [{"number": self._program_number[0]["number"]}],
             }
         else:
@@ -365,6 +473,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
                 self._name,
                 response,
             )
+        self._apply_command_locally(payload, response)
 
     async def async_therm_manual(
         self, hvac_modes: str, target_temperature: str | None, end_timestamp: str
@@ -399,6 +508,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
                 self._name,
                 response,
             )
+        self._apply_command_locally(payload, response)
 
     async def _async_service_set_temperature_with_end_datetime(
         self, **kwargs: Any
@@ -463,6 +573,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
                 boost_time,
                 response,
             )
+        self._apply_command_locally(payload, response)
 
     async def _async_service_set_temperature_with_time_period(
         self, **kwargs: Any
@@ -516,7 +627,10 @@ class BticinoX8000ClimateEntity(ClimateEntity):
         payload = {
             "function": self._function,
             "mode": "automatic",
-            "setPoint": {"value": self._set_point, "unit": self.temperature_unit},
+            "setPoint": {
+                "value": self._set_point_for_payload(),
+                "unit": self.temperature_unit,
+            },
             "programs": [{"number": self._get_program_number(selected_schedule)}],
         }
         response = await self._bticino_api.set_chronothermostat_status(
@@ -529,6 +643,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
                 selected_schedule,
                 response,
             )
+        self._apply_command_locally(payload, response)
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set new target temperature."""
@@ -554,6 +669,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
                     self._name,
                     response,
                 )
+            self._apply_command_locally(payload, response)
 
     def has_data(
         self,
@@ -589,7 +705,7 @@ class BticinoX8000ClimateEntity(ClimateEntity):
         }
 
     async def async_sync_manual(self) -> None:
-        """Force sync chronothermostat status."""
+        """Force sync chronothermostat status (one API call)."""
         _LOGGER.info(
             "Climate %s: Starting async_sync_manual() - Calling API...",
             self._name,
@@ -597,86 +713,35 @@ class BticinoX8000ClimateEntity(ClimateEntity):
         response = await self._bticino_api.get_chronothermostat_status(
             self._plant_id, self._topology_id
         )
-        _LOGGER.debug(
-            "Climate %s: API response status_code=%s",
-            self._name,
-            response.get("status_code"),
-        )
-
-        if response["status_code"] == 200:
-            chronothermostat_data = response["data"]["chronothermostats"][0]
-            self._function = chronothermostat_data["function"]
-            self._mode = chronothermostat_data["mode"]
-            self._load_state = chronothermostat_data["loadState"]
-            self._program_number = chronothermostat_data["programs"]
-            self._program = self._get_program_name(self._program_number)
-            if "activationTime" in chronothermostat_data:
-                self._activation_time = chronothermostat_data.get("activationTime")
-                self._update_attrs(
-                    {
-                        "mode": self._mode.lower(),
-                        "status": self._load_state.lower(),
-                        "current_program": self._program,
-                        "available_programs": [
-                            option["name"] for option in self._programs_name
-                        ],
-                        self._mode.lower()
-                        + "_time_remaining": self.calculate_remaining_time(
-                            self._activation_time
-                        ),
-                    }
-                )
-            else:
-                self._update_attrs(
-                    {
-                        "mode": self._mode.lower(),
-                        "status": self._load_state.lower(),
-                        "current_program": self._program,
-                        "available_programs": [
-                            option["name"] for option in self._programs_name
-                        ],
-                    }
-                )
-            set_point_data = chronothermostat_data["setPoint"]
-            self._set_point = float(set_point_data["value"])
-            thermometer_data = chronothermostat_data["thermometer"]["measures"][0]
-            self._temperature = float(thermometer_data["value"])
-            hygrometer_data = chronothermostat_data["hygrometer"]["measures"][0]
-            self._humidity = float(hygrometer_data["value"])
-
-            _LOGGER.info(
-                "Climate %s: async_sync_manual() completed - temp=%s°C, "
-                "humidity=%s%%, target=%s°C, mode=%s, program=%s",
-                self._name,
-                self._temperature,
-                self._humidity,
-                self._set_point,
-                self._mode,
-                self._program,
-            )
-
-            self.async_write_ha_state()
-
-            # Notify sensors to update with the same data (no extra API call)
-            _LOGGER.info(
-                "Climate %s: Dispatching webhook event to sensors/selects",
-                self._name,
-            )
-            async_dispatcher_send(  # type: ignore[has-type]
-                self.hass,
-                f"{DOMAIN}_webhook_update",
-                {"data": [{"data": {"chronothermostats": [chronothermostat_data]}}]},
-            )
-            _LOGGER.debug(
-                "Climate %s: Webhook event dispatched successfully",
-                self._name,
-            )
-        else:
+        if response["status_code"] != 200:
             _LOGGER.error(
-                "Error updating temperature for %s. Status code: %s",
+                "Error updating status for %s. Status code: %s, response: %s",
                 self._name,
                 response["status_code"],
+                response.get("error"),
             )
+            return
+        try:
+            chronothermostat_data = response["data"]["chronothermostats"][0]
+        except (KeyError, IndexError, TypeError):
+            _LOGGER.error(
+                "Climate %s: unexpected status response: %s",
+                self._name,
+                response.get("data"),
+            )
+            return
+        # Same path as a webhook: updates this entity and its sensors/selects
+        self._dispatch_chronothermostat(chronothermostat_data)
+        _LOGGER.info(
+            "Climate %s: async_sync_manual() completed - temp=%s°C, "
+            "humidity=%s%%, target=%s°C, mode=%s, program=%s",
+            self._name,
+            self._temperature,
+            self._humidity,
+            self._set_point,
+            self._mode,
+            self._program,
+        )
 
 
 async def async_setup_entry(
@@ -686,6 +751,8 @@ async def async_setup_entry(
 ) -> None:
     """Add entry."""
     data = dict(config_entry.data)
+    api = get_api(hass, config_entry)
+    entities = []
     for plant_data in data["selected_thermostats"]:
         plant_id = list(plant_data.keys())[0]
         plant_data = list(plant_data.values())[0]
@@ -699,20 +766,8 @@ async def async_setup_entry(
             "programs": programs,
         }
         _LOGGER.info("THERMOSTAT_DATA: %s", config)
-        my_entity = BticinoX8000ClimateEntity(data, config)
-        async_add_entities([my_entity])
-        if not my_entity.has_data():
-            await my_entity.async_sync_manual()
-
-        async_dispatcher_connect(  # type: ignore
-            hass,
-            f"{DOMAIN}_webhook_update",
-            my_entity.handle_webhook_update,
-        )
-
-        # WIP
-        # program_input_select = BticinoX8000ProgramInputSelect(hass, my_entity)
-        # await program_input_select.async_create_input_select()
+        entities.append(BticinoX8000ClimateEntity(api, config))
+    async_add_entities(entities)
 
     platform = entity_platform.async_get_current_platform()
 

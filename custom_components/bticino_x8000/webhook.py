@@ -54,6 +54,9 @@ class BticinoX8000WebhookHandler:
 
     async def async_register_webhook(self) -> None:
         """Register the webhook."""
+        # A previous setup that failed half-way may have left it registered,
+        # which would make webhook_register raise "Handler is already defined!".
+        webhook_unregister(self.hass, self.webhook_id)
         webhook_register(
             self.hass,
             DOMAIN,
