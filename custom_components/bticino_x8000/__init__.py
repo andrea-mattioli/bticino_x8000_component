@@ -31,6 +31,24 @@ def _webhook_endpoint(external_url: str, webhook_id: str) -> str:
     return f"{external_url.rstrip('/')}/api/webhook/{webhook_id}"
 
 
+def _own_subscriptions(
+    subscriptions: list[dict[str, Any]] | None, plant_id: str, external_url: str
+) -> list[dict[str, Any]]:
+    """Return the plant's subscriptions that point to this HA instance.
+
+    Subscriptions are shared by every application of the same Legrand
+    account, so other Home Assistant instances (or other tools) may have
+    their own on the same plant: those must never be touched.
+    """
+    prefix = _webhook_endpoint(external_url, "")
+    return [
+        sub
+        for sub in subscriptions or []
+        if sub.get("plantId") == plant_id
+        and str(sub.get("EndPointUrl", "")).startswith(prefix)
+    ]
+
+
 async def async_setup_entry(  # pylint: disable=too-many-statements,too-many-locals
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -103,26 +121,54 @@ async def async_setup_entry(  # pylint: disable=too-many-statements,too-many-loc
                 )
                 return None
 
-            ha_subscriptions = [
-                sub
-                for sub in subscriptions_response.get("data") or []
-                if sub.get("plantId") == plant_id
-                and "/api/webhook/" in sub.get("EndPointUrl", "")
+            all_subscriptions = subscriptions_response.get("data") or []
+            own_subscriptions = _own_subscriptions(
+                all_subscriptions, plant_id, data["external_url"]
+            )
+            others = [
+                sub.get("EndPointUrl")
+                for sub in all_subscriptions
+                if sub.get("plantId") == plant_id and sub not in own_subscriptions
             ]
-            if not ha_subscriptions:
+            if others:
+                _LOGGER.info(
+                    "Leaving %d subscription(s) of other endpoints untouched "
+                    "for plant %s: %s",
+                    len(others),
+                    plant_id,
+                    others,
+                )
+            if not own_subscriptions:
                 _LOGGER.warning(
-                    "No Home Assistant subscriptions found for cleanup. "
-                    "409 conflict may be from another source."
+                    "C2C subscription conflict (409) for plant %s but no "
+                    "subscription points to %s",
+                    plant_id,
+                    webhook_endpoint,
                 )
                 return None
 
-            _LOGGER.info(
-                "Found %d Home Assistant subscription(s) for plant %s",
-                len(ha_subscriptions),
-                plant_id,
+            # Reuse the subscription that already points to our webhook (e.g.
+            # after a restart) and delete only this instance's orphans: old
+            # webhook ids on the same external URL that no configured
+            # thermostat uses anymore.
+            configured_endpoints = {
+                _webhook_endpoint(
+                    data["external_url"], list(thermo.values())[0].get("webhook_id")
+                )
+                for thermo in data["selected_thermostats"]
+            }
+            existing = next(
+                (
+                    sub
+                    for sub in own_subscriptions
+                    if sub.get("EndPointUrl") == webhook_endpoint
+                    and sub.get("subscriptionId")
+                ),
+                None,
             )
-            # Delete all HA subscriptions for this plant, then recreate ours
-            for sub in ha_subscriptions:
+            for sub in own_subscriptions:
+                if sub.get("EndPointUrl") in configured_endpoints:
+                    continue
                 sub_id = sub.get("subscriptionId")
                 _LOGGER.debug(
                     "Deleting orphaned subscription: %s (endpoint: %s)",
@@ -140,6 +186,14 @@ async def async_setup_entry(  # pylint: disable=too-many-statements,too-many-loc
                         sub_id,
                         delete_response,
                     )
+            if existing is not None:
+                subscription_id = existing["subscriptionId"]
+                _LOGGER.info(
+                    "Reusing existing C2C subscription %s for plant %s",
+                    subscription_id,
+                    plant_id,
+                )
+                return subscription_id
 
             _LOGGER.info(
                 "Retrying C2C subscription after cleanup for plant %s...", plant_id
@@ -275,14 +329,11 @@ async def async_unload_entry(  # pylint: disable=too-many-locals,too-many-branch
             )
 
             if subscriptions_response.get("status_code") in (200, 204):
-                # Filter for ALL Home Assistant subscriptions (current and orphaned)
-                ha_subscriptions = [
-                    sub
-                    for sub in subscriptions_response.get("data") or []
-                    if sub.get("plantId") == plant_id
-                    and "/api/webhook/" in sub.get("EndPointUrl", "")
-                    and external_url in sub.get("EndPointUrl", "")
-                ]
+                # All subscriptions of THIS instance (current and orphaned);
+                # other instances' subscriptions on the same plant stay.
+                ha_subscriptions = _own_subscriptions(
+                    subscriptions_response.get("data"), plant_id, external_url
+                )
 
                 _LOGGER.info(
                     "Found %d Home Assistant subscription(s) to delete for plant %s",
